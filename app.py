@@ -719,7 +719,7 @@ with tab_admin:
                 save_db(db)
                 st.success(f"Successfully recorded stats for {len(selected_match_players)} player(s)!")
             else:
-                st.warning("অনুগ্রহ করে অন্তত একজন প্লেয়ার সিলেক্ট করুন।")=======================
+                st.warning("অনুগ্রহ করে অন্তত একজন প্লেয়ার সিলেক্ট করুন।")
 # 1. DATABASE PERSISTENCE LAYER & SETUP
 # ==========================================
 def init_db():
