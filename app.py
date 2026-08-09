@@ -1,608 +1,526 @@
-import streamlit as st
-import pandas as pd
+import tkinter as tk
+from tkinter import ttk, messagebox
 import json
 import os
-import datetime
-import hashlib
-import random
+from datetime import datetime
 
-DATA_FILE = "data/club_store.json"
+DB_FILE = "club_data.json"
 
-# ==========================================
-# 1. DATABASE PERSISTENCE LAYER & SETUP
-# ==========================================
-def init_db():
-    if not os.path.exists("data"):
-        os.makedirs("data")
-    if not os.path.exists(DATA_FILE):
-        default_data = {
-            "app_config": {
-                "app_name": "ASMB United Football Club",
-                "photo_path": None,
-                "daily_bg_color": "#F4F6F9"
-            },
-            "users": {},
-            "ratings": {},
+class ClubApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Club Management System")
+        self.root.geometry("850x650")
+        self.root.configure(bg="#f4f6f9")
+
+        # Database structure initialization
+        self.db = {
+            "users": [],
             "notices": [],
-            "chat_messages": [],
-            "ai_chats": {},
-            "motm_votes": {}
+            "chats": [],
+            "ai_chats": [],
+            "match_stats": {"goals": [], "conceded": [], "last_motm": ""}
         }
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(default_data, f, indent=4, ensure_ascii=False)
+        self.current_user = None
+        self.load_data()
 
-def load_db():
-    init_db()
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        # Custom ttk Styles
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure('.', font=('Segoe UI', 10), background="#f4f6f9")
+        self.style.configure('TNotebook.Tab', padding=[12, 6], font=('Segoe UI', 10, 'bold'))
+        self.style.configure('Header.TLabel', font=('Segoe UI', 14, 'bold'), background="#f4f6f9")
 
-def save_db(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+        # Main Containers
+        self.auth_frame = ttk.Frame(self.root, padding="20")
+        self.main_frame = ttk.Frame(self.root, padding="10")
 
-def hash_pass(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+        self.setup_auth_ui()
+        self.setup_main_ui()
 
-# ==========================================
-# 2. BUSINESS LOGIC & ALGORITHMS
-# ==========================================
-def calculate_effective_rating(username, db):
-    r = db["ratings"].get(username, {})
-    u = db["users"].get(username, {})
-    if not r or not r.get("attendance", True):
-        return 0.0
-    
-    evals = r.get("evaluations_received", {})
-    if evals:
-        base = sum(evals.values()) / len(evals)
-    else:
-        base = r.get("base_rating", 6.0)
+        # Show Auth Screen initially
+        self.auth_frame.pack(expand=True, fill="both")
+
+    # ==================== DATA PERSISTENCE ====================
+    def load_data(self):
+        if os.path.exists(DB_FILE):
+            try:
+                with open(DB_FILE, "r", encoding="utf-8") as f:
+                    self.db = json.load(f)
+            except Exception as e:
+                print("Error loading database:", e)
+
+    def save_data(self):
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(self.db, f, indent=4, ensure_ascii=False)
+
+    def calculate_star_players(self):
+        # Top 5 players with highest MOTM count get Star Player status
+        for u in self.db["users"]:
+            u["is_star"] = False
+
+        active_users = [u for u in self.db["users"] if not u.get("is_blocked", False) and u.get("motm_count", 0) > 0]
+        sorted_users = sorted(active_users, key=lambda x: x.get("motm_count", 0), reverse=True)[:5]
         
-    fouls = r.get("foul_score", 0.0)
-    goals = r.get("goals", 0)
-    assists = r.get("assists", 0)
-    conceded = r.get("conceded", 0)
-    pos = u.get("preferred_position", "Midfielder")
-    penalty = u.get("rating_penalty", 0.0)
-    
-    conceded_weights = {"Goalkeeper": -2.0, "Defender": -1.75, "Midfielder": -1.5, "Striker": -1.5}
-    conceded_penalty = conceded * conceded_weights.get(pos, -1.5)
-    
-    performance = base - fouls + (goals * 1.0) + (assists * 0.5) + conceded_penalty - penalty
-    return round(max(0.0, min(10.0, performance)), 2)
+        star_ids = [u["id"] for u in sorted_users]
+        for u in self.db["users"]:
+            if u["id"] in star_ids:
+                u["is_star"] = True
+        self.save_data()
 
-def evaluate_block_validity(reason):
-    valid_keywords = ["abuse", "foul", "absent", "toxic", "rule", "cheating", "conduct", "violation"]
-    return any(word in reason.lower() for word in valid_keywords)
+    # ==================== AUTH UI & LOGIC ====================
+    def setup_auth_ui(self):
+        ttk.Label(self.auth_frame, text="Club Management Login / Register", style='Header.TLabel').pack(pady=15)
 
-def generate_dynamic_formation(player_count):
-    if player_count >= 11:
-        return "4-3-3", {"Goalkeeper": 1, "Defender": 4, "Midfielder": 3, "Striker": 3}
-    elif player_count >= 9:
-        return "3-3-2", {"Goalkeeper": 1, "Defender": 3, "Midfielder": 3, "Striker": 2}
-    elif player_count >= 7:
-        return "2-3-1", {"Goalkeeper": 1, "Defender": 2, "Midfielder": 3, "Striker": 1}
-    else:
-        return "1-2-1", {"Goalkeeper": 1, "Defender": 1, "Midfielder": 2, "Striker": 1}
+        form = ttk.Frame(self.auth_frame)
+        form.pack(pady=10)
 
-# ==========================================
-# 3. PAGE INITIALIZATION & HIGH-CONTRAST THEME
-# ==========================================
-st.set_page_config(page_title="ASMB United FC", layout="wide", page_icon="⚽")
-db = load_db()
+        ttk.Label(form, text="User ID / Username:").grid(row=0, column=0, sticky="w", pady=5)
+        self.username_ent = ttk.Entry(form, width=30)
+        self.username_ent.grid(row=0, column=1, pady=5)
 
-# Dynamic Light Theme Engine
-bg_colors = ["#F4F6F9", "#EBF3FA", "#F0F4F8", "#EFEFF4", "#F5F5F7"]
-today_str = str(datetime.date.today())
-random.seed(today_str)
-daily_bg = random.choice(bg_colors)
+        ttk.Label(form, text="Password:").grid(row=1, column=0, sticky="w", pady=5)
+        self.password_ent = ttk.Entry(form, width=30, show="*")
+        self.password_ent.grid(row=1, column=1, pady=5)
 
-st.markdown(f"""
-    <style>
-    .stApp {{ 
-        background-color: {daily_bg} !important; 
-        color: #111111 !important;
-    }}
-    h1, h2, h3, h4, h5, h6, p, label, span, div {{
-        color: #111111 !important;
-    }}
-    div.stButton > button {{
-        background-color: #000000 !important;
-        color: #FFFFFF !important;
-        border: 1px solid #000000;
-        border-radius: 8px;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }}
-    div.stButton > button:hover {{
-        background-color: #333333 !important;
-        color: #FFFFFF !important;
-        border-color: #333333;
-    }}
-    .stTextInput>div>div>input, .stSelectbox>div>div>div, .stTextArea>div>div>textarea {{
-        background-color: #FFFFFF !important;
-        color: #000000 !important;
-        border: 1px solid #CCCCCC !important;
-        border-radius: 6px;
-    }}
-    .chat-bubble-me {{
-        background-color: #DCF8C6;
-        padding: 8px 12px;
-        border-radius: 8px;
-        margin-bottom: 6px;
-        text-align: right;
-    }}
-    .chat-bubble-other {{
-        background-color: #FFFFFF;
-        padding: 8px 12px;
-        border-radius: 8px;
-        margin-bottom: 6px;
-        border: 1px solid #E0E0E0;
-    }}
-    </style>
-""", unsafe_allow_html=True)
+        btn_frame = ttk.Frame(self.auth_frame)
+        btn_frame.pack(pady=15)
 
-if "user" not in st.session_state:
-    st.session_state.user = None
+        ttk.Button(btn_frame, text="Login", command=self.login).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Register", command=self.register).pack(side="left", padx=5)
 
-# ==========================================
-# 4. AUTHENTICATION & LOGIN/REGISTRATION PORTAL
-# ==========================================
-def auth_section():
-    st.sidebar.title("⚽ ASMB Access Portal")
-    if st.session_state.user is None:
-        tab1, tab2 = st.sidebar.tabs(["🔑 Login", "📝 Register"])
+    def register(self):
+        username = self.username_ent.get().strip()
+        password = self.password_ent.get().strip()
+
+        if not username or not password:
+            messagebox.showwarning("Warning", "All fields are required!")
+            return
+
+        if any(u['username'] == username for u in self.db['users']):
+            messagebox.showerror("Error", "User ID already exists!")
+            return
+
+        # Check if first user -> S.A automatically
+        is_first = len(self.db['users']) == 0
+        role = 's.a' if is_first else 'user'
+
+        new_user = {
+            "id": len(self.db['users']) + 1,
+            "username": username,
+            "password": password,
+            "role": role,
+            "is_blocked": False,
+            "position": "Unassigned",
+            "motm_count": 0,
+            "practice_only": False,
+            "is_star": False
+        }
+
+        self.db['users'].append(new_user)
+        self.save_data()
+        messagebox.showinfo("Success", f"Registration successful!\nRole Assigned: {role.upper()}")
+        self.username_ent.delete(0, tk.END)
+        self.password_ent.delete(0, tk.END)
+
+    def login(self):
+        username = self.username_ent.get().strip()
+        password = self.password_ent.get().strip()
+
+        user = next((u for u in self.db['users'] if u['username'] == username and u['password'] == password), None)
+
+        if not user:
+            messagebox.showerror("Error", "Invalid Username or Password!")
+            return
+
+        if user.get("is_blocked", False):
+            messagebox.showerror("Blocked", "Your account is BLOCKED! You cannot login without S.A/Admin permission.")
+            return
+
+        self.current_user = user
+        self.calculate_star_players()
         
-        with tab1:
-            u_log = st.text_input("Username", key="l_user")
-            p_log = st.text_input("Password", type="password", key="l_pass")
-            if st.button("Sign In", use_container_width=True):
-                if u_log in db["users"] and db["users"][u_log]["password_hash"] == hash_pass(p_log):
-                    st.session_state.user = u_log
-                    st.rerun()
-                else:
-                    st.error("Invalid credentials.")
-                    
-        with tab2:
-            is_first = len(db["users"]) == 0
-            if is_first:
-                st.info("⭐ First registration becomes Superadmin (s.a)!")
+        self.auth_frame.pack_forget()
+        self.main_frame.pack(expand=True, fill="both")
+        self.refresh_dashboard()
+
+    def logout(self):
+        self.current_user = None
+        self.main_frame.pack_forget()
+        self.auth_frame.pack(expand=True, fill="both")
+        self.username_ent.delete(0, tk.END)
+        self.password_ent.delete(0, tk.END)
+
+    # ==================== MAIN DASHBOARD UI & LOGIC ====================
+    def setup_main_ui(self):
+        # User Header Profile Bar
+        self.profile_bar = ttk.Frame(self.main_frame, padding="5")
+        self.profile_bar.pack(fill="x", pady=5)
+
+        self.user_info_lbl = ttk.Label(self.profile_bar, text="", font=('Segoe UI', 10, 'bold'))
+        self.user_info_lbl.pack(side="left")
+
+        ttk.Button(self.profile_bar, text="Logout", command=self.logout).pack(side="right")
+
+        # Notebook (Tabs)
+        self.notebook = ttk.Notebook(self.main_frame)
+        self.notebook.pack(expand=True, fill="both", pady=5)
+
+        # Tab 1: Notice
+        self.tab_notice = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(self.tab_notice, text="Notices")
+        self.setup_notice_tab()
+
+        # Tab 2: Player List & Squad
+        self.tab_players = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(self.tab_players, text="Player List")
+        self.setup_players_tab()
+
+        # Tab 3: Group Chat
+        self.tab_chat = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(self.tab_chat, text="Group Chat")
+        self.setup_chat_tab()
+
+        # Tab 4: AI Chat
+        self.tab_ai = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(self.tab_ai, text="AI Chat")
+        self.setup_ai_tab()
+
+        # Tab 5: Main Match
+        self.tab_match = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(self.tab_match, text="Main Match")
+        self.setup_match_tab()
+
+        # Tab 6: Admin Panel
+        self.tab_admin = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(self.tab_admin, text="Admin Panel")
+        self.setup_admin_tab()
+
+    def refresh_dashboard(self):
+        # Update User Info Text
+        u = self.current_user
+        star_str = "⭐ [STAR PLAYER]" if u.get("is_star") else ""
+        practice_str = "[Practice Only]" if u.get("practice_only") else ""
+        self.user_info_lbl.config(
+            text=f"User: {u['username']} | Role: {u['role'].upper()} | Position: {u['position']} {star_str} {practice_str}"
+        )
+
+        # Practice Match Only Player Restriction
+        if u.get("practice_only", False):
+            self.notebook.hide(self.tab_match)
+        else:
+            self.notebook.add(self.tab_match, text="Main Match")
+
+        # Admin Tab Visibility
+        if u['role'] in ['s.a', 'a']:
+            self.notebook.add(self.tab_admin, text="Admin Panel")
+        else:
+            self.notebook.hide(self.tab_admin)
+
+        # S.A / Admin Notice Form Visibility
+        if u['role'] in ['s.a', 'a']:
+            self.notice_post_frame.pack(fill="x", pady=10)
+        else:
+            self.notice_post_frame.pack_forget()
+
+        # S.A Master Reset & Match Control Visibility
+        if u['role'] == 's.a':
+            self.sa_master_frame.pack(fill="x", pady=5)
+            self.sa_match_controls.pack(fill="both", expand=True, pady=10)
+        else:
+            self.sa_master_frame.pack_forget()
+            self.sa_match_controls.pack_forget()
+
+        self.render_notices()
+        self.render_player_list()
+        self.render_chats()
+        self.render_admin_panel()
+        self.populate_match_options()
+
+    # ==================== NOTICES ====================
+    def setup_notice_tab(self):
+        self.notice_listbox = tk.Text(self.tab_notice, height=15, state="disabled", font=('Segoe UI', 10))
+        self.notice_listbox.pack(fill="both", expand=True, pady=5)
+
+        self.notice_post_frame = ttk.LabelFrame(self.tab_notice, text="Post Notice (S.A / Admin Only)", padding="10")
+        self.notice_txt = ttk.Entry(self.notice_post_frame, width=50)
+        self.notice_txt.pack(side="left", fill="x", expand=True, padx=5)
+        ttk.Button(self.notice_post_frame, text="Post", command=self.post_notice).pack(side="right")
+
+    def post_notice(self):
+        text = self.notice_txt.get().strip()
+        if not text:
+            return
+        notice_data = {
+            "author": self.current_user['username'],
+            "role": self.current_user['role'],
+            "text": text,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M")
+        }
+        self.db['notices'].append(notice_data)
+        self.save_data()
+        self.notice_txt.delete(0, tk.END)
+        self.render_notices()
+
+    def render_notices(self):
+        self.notice_listbox.config(state="normal")
+        self.notice_listbox.delete("1.0", tk.END)
+        for n in reversed(self.db['notices']):
+            self.notice_listbox.insert(tk.END, f"[{n['date']}] {n['author']} ({n['role'].upper()}):\n{n['text']}\n" + "-"*50 + "\n")
+        self.notice_listbox.config(state="disabled")
+
+    # ==================== PLAYER LIST ====================
+    def setup_players_tab(self):
+        ttk.Label(self.tab_players, text="Active Players & Squad List (Blocked Players Excluded)", font=('Segoe UI', 11, 'bold')).pack(anchor="w", pady=5)
+        self.player_text = tk.Text(self.tab_players, height=20, state="disabled")
+        self.player_text.pack(fill="both", expand=True)
+
+    def render_player_list(self):
+        self.player_text.config(state="normal")
+        self.player_text.delete("1.0", tk.END)
+        active_players = [u for u in self.db['users'] if not u.get('is_blocked', False)]
+
+        for u in active_players:
+            star_tag = " ⭐ [STAR PLAYER]" if u.get("is_star") else ""
+            practice_tag = " [Practice Only]" if u.get("practice_only") else ""
+            line = f"• {u['username']} | Role: {u['role'].upper()} | Position: {u['position']} | MOTM: {u.get('motm_count', 0)}{star_tag}{practice_tag}\n"
+            self.player_text.insert(tk.END, line)
+        self.player_text.config(state="disabled")
+
+    # ==================== CHATS ====================
+    def setup_chat_tab(self):
+        self.chat_display = tk.Text(self.tab_chat, height=15, state="disabled")
+        self.chat_display.pack(fill="both", expand=True, pady=5)
+
+        input_frame = ttk.Frame(self.tab_chat)
+        input_frame.pack(fill="x", pady=5)
+        self.chat_entry = ttk.Entry(input_frame)
+        self.chat_entry.pack(side="left", fill="x", expand=True, padx=5)
+        ttk.Button(input_frame, text="Send", command=self.send_chat).pack(side="right")
+
+    def send_chat(self):
+        msg = self.chat_entry.get().strip()
+        if not msg:
+            return
+        self.db['chats'].append({"user": self.current_user['username'], "msg": msg})
+        self.save_data()
+        self.chat_entry.delete(0, tk.END)
+        self.render_chats()
+
+    def setup_ai_tab(self):
+        self.ai_display = tk.Text(self.tab_ai, height=15, state="disabled")
+        self.ai_display.pack(fill="both", expand=True, pady=5)
+
+        input_frame = ttk.Frame(self.tab_ai)
+        input_frame.pack(fill="x", pady=5)
+        self.ai_entry = ttk.Entry(input_frame)
+        self.ai_entry.pack(side="left", fill="x", expand=True, padx=5)
+        ttk.Button(input_frame, text="Ask AI", command=self.send_ai_chat).pack(side="right")
+
+    def send_ai_chat(self):
+        msg = self.ai_entry.get().strip()
+        if not msg:
+            return
+        reply = f"AI: Thanks for your query regarding '{msg}'. (AI cannot set star players or positions)."
+        self.db['ai_chats'].append({"user": self.current_user['username'], "msg": msg, "reply": reply})
+        self.save_data()
+        self.ai_entry.delete(0, tk.END)
+        self.render_chats()
+
+    def render_chats(self):
+        # Group Chat
+        self.chat_display.config(state="normal")
+        self.chat_display.delete("1.0", tk.END)
+        for c in self.db['chats']:
+            self.chat_display.insert(tk.END, f"{c['user']}: {c['msg']}\n")
+        self.chat_display.config(state="disabled")
+
+        # AI Chat
+        self.ai_display.config(state="normal")
+        self.ai_display.delete("1.0", tk.END)
+        for c in self.db['ai_chats']:
+            self.ai_display.insert(tk.END, f"You: {c['msg']}\n{c['reply']}\n" + "-"*40 + "\n")
+        self.ai_display.config(state="disabled")
+
+    # ==================== MAIN MATCH ====================
+    def setup_match_tab(self):
+        self.match_info_lbl = ttk.Label(self.tab_match, text="Main Match Overview", font=('Segoe UI', 12, 'bold'))
+        self.match_info_lbl.pack(anchor="w", pady=5)
+
+        self.match_stats_display = tk.Text(self.tab_match, height=5, state="disabled")
+        self.match_stats_display.pack(fill="x", pady=5)
+
+        # S.A Only Match Editing Frame
+        self.sa_match_controls = ttk.LabelFrame(self.tab_match, text="Update Main Match Stats (S.A Only)", padding="10")
+
+        grid_frame = ttk.Frame(self.sa_match_controls)
+        grid_frame.pack(fill="x", expand=True)
+
+        ttk.Label(grid_frame, text="Select Goal Scorers (Multiple):").grid(row=0, column=0, sticky="w")
+        self.goals_box = tk.Listbox(grid_frame, selectmode=tk.MULTIPLE, height=5, exportselection=False)
+        self.goals_box.grid(row=1, column=0, padx=5, pady=5)
+
+        ttk.Label(grid_frame, text="Select Goal Conceded (Multiple):").grid(row=0, column=1, sticky="w")
+        self.conceded_box = tk.Listbox(grid_frame, selectmode=tk.MULTIPLE, height=5, exportselection=False)
+        self.conceded_box.grid(row=1, column=1, padx=5, pady=5)
+
+        ttk.Label(grid_frame, text="Select MOTM:").grid(row=0, column=2, sticky="w")
+        self.motm_box = tk.Listbox(grid_frame, selectmode=tk.SINGLE, height=5, exportselection=False)
+        self.motm_box.grid(row=1, column=2, padx=5, pady=5)
+
+        ttk.Button(self.sa_match_controls, text="Save Match Stats", command=self.save_match_stats).pack(pady=10)
+
+    def populate_match_options(self):
+        active_players = [u for u in self.db['users'] if not u.get('is_blocked', False) and not u.get('practice_only', False)]
+
+        self.goals_box.delete(0, tk.END)
+        self.conceded_box.delete(0, tk.END)
+        self.motm_box.delete(0, tk.END)
+
+        for u in active_players:
+            self.goals_box.insert(tk.END, u['username'])
+            self.conceded_box.insert(tk.END, u['username'])
+            self.motm_box.insert(tk.END, u['username'])
+
+        # Display Current Stats
+        self.match_stats_display.config(state="normal")
+        self.match_stats_display.delete("1.0", tk.END)
+        stats = self.db['match_stats']
+        goals = ", ".join(stats.get("goals", [])) or "None"
+        conceded = ", ".join(stats.get("conceded", [])) or "None"
+        last_motm = stats.get("last_motm", "None")
+        self.match_stats_display.insert(tk.END, f"Goal Scorers: {goals}\nGoal Conceded Players: {conceded}\nLast Match MOTM: {last_motm}")
+        self.match_stats_display.config(state="disabled")
+
+    def save_match_stats(self):
+        if self.current_user['role'] != 's.a':
+            messagebox.showerror("Error", "Only S.A can edit match stats!")
+            return
+
+        selected_goals = [self.goals_box.get(i) for i in self.goals_box.curselection()]
+        selected_conceded = [self.conceded_box.get(i) for i in self.conceded_box.curselection()]
+        selected_motm_idx = self.motm_box.curselection()
+
+        self.db['match_stats']['goals'] = selected_goals
+        self.db['match_stats']['conceded'] = selected_conceded
+
+        if selected_motm_idx:
+            motm_username = self.motm_box.get(selected_motm_idx[0])
+            self.db['match_stats']['last_motm'] = motm_username
+            user = next((u for u in self.db['users'] if u['username'] == motm_username), None)
+            if user:
+                user['motm_count'] = user.get('motm_count', 0) + 1
+
+        self.calculate_star_players()
+        self.save_data()
+        messagebox.showinfo("Success", "Match statistics updated successfully!")
+        self.refresh_dashboard()
+
+    # ==================== ADMIN PANEL ====================
+    def setup_admin_tab(self):
+        # Master Refresh Frame (S.A Only)
+        self.sa_master_frame = ttk.LabelFrame(self.tab_admin, text="S.A Master Controls", padding="10")
+        ttk.Button(self.sa_master_frame, text="MASTER REFRESH (Clear Notice, Chat & AI Chat)", command=self.master_reset).pack(fill="x")
+
+        # Player Controls List
+        ttk.Label(self.tab_admin, text="Manage Players (Position, Role & Block Status)", font=('Segoe UI', 11, 'bold')).pack(anchor="w", pady=10)
+        
+        # Scrollable Frame for Admin User Management
+        canvas = tk.Canvas(self.tab_admin, borderwidth=0, background="#f4f6f9")
+        scrollbar = ttk.Scrollbar(self.tab_admin, orient="vertical", command=canvas.yview)
+        self.scroll_admin_frame = ttk.Frame(canvas, padding="5")
+
+        self.scroll_admin_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=self.scroll_admin_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def render_admin_panel(self):
+        for widget in self.scroll_admin_frame.winfo_children():
+            widget.destroy()
+
+        for u in self.db['users']:
+            f = ttk.LabelFrame(self.scroll_admin_frame, text=f"{u['username']} ({u['role'].upper()})", padding="10")
+            f.pack(fill="x", expand=True, pady=5)
+
+            # Position Edit (S.A Only)
+            pos_frame = ttk.Frame(f)
+            pos_frame.pack(fill="x", pady=2)
+            ttk.Label(pos_frame, text="Position:").pack(side="left")
+            pos_ent = ttk.Entry(pos_frame, width=15)
+            pos_ent.insert(0, u.get("position", "Unassigned"))
+            pos_ent.pack(side="left", padx=5)
+
+            if self.current_user['role'] == 's.a':
+                ttk.Button(pos_frame, text="Save Position", command=lambda uid=u['id'], ent=pos_ent: self.save_position(uid, ent.get())).pack(side="left")
             else:
-                st.caption("Player Registration Portal")
-                
-            u_reg = st.text_input("New Username", key="r_user")
-            p_reg = st.text_input("New Password", type="password", key="r_pass")
-            full_n = st.text_input("Full Name")
-            j_num = st.number_input("Jersey Number", min_value=1, max_value=99, step=1, value=10)
-            j_name = st.text_input("Jersey Name")
-            ai_nam = st.text_input("Personal AI Name", value="TacticsBot")
-            
-            if u_reg in db["users"]:
-                st.warning("Username already taken!")
-                
-            if st.button("Register Account", use_container_width=True):
-                if u_reg and p_reg and u_reg not in db["users"]:
-                    role = "Superadmin" if is_first else "Player"
-                    pos = "Midfielder" if is_first else "Unassigned"
-                    
-                    db["users"][u_reg] = {
-                        "password_hash": hash_pass(p_reg),
-                        "full_name": full_n if full_n else u_reg,
-                        "jersey_number": j_num,
-                        "jersey_name": j_name if j_name else u_reg,
-                        "preferred_position": pos,
-                        "personal_ai_name": ai_nam,
-                        "role": role,
-                        "is_blocked": False,
-                        "block_reason": "",
-                        "rating_penalty": 0.0,
-                        "has_appealed": False
-                    }
-                    db["ratings"][u_reg] = {
-                        "base_rating": 6.0, "foul_score": 0.0, "attendance": True,
-                        "goals": 0, "assists": 0, "conceded": 0, "is_substitute": False,
-                        "evaluations_received": {}
-                    }
-                    save_db(db)
-                    st.success("Registration successful! Please login.")
-    else:
-        u_data = db["users"][st.session_state.user]
-        st.sidebar.markdown(f"**User:** {u_data['full_name']}")
-        st.sidebar.markdown(f"**Role:** `{u_data['role']}`")
-        st.sidebar.markdown(f"**Personal AI:** {u_data['personal_ai_name']}")
-        st.sidebar.divider()
-        
-        # Self-Profile Edit Option
-        with st.sidebar.expander("⚙️ Edit Profile Info"):
-            new_fn = st.text_input("Full Name", value=u_data['full_name'])
-            new_jn = st.text_input("Jersey Name", value=u_data['jersey_name'])
-            new_num = st.number_input("Jersey #", 1, 99, int(u_data['jersey_number']))
-            new_ai = st.text_input("AI Bot Name", value=u_data['personal_ai_name'])
-            
-            if st.button("Save Profile"):
-                db["users"][st.session_state.user]["full_name"] = new_fn
-                db["users"][st.session_state.user]["jersey_name"] = new_jn
-                db["users"][st.session_state.user]["jersey_number"] = new_num
-                db["users"][st.session_state.user]["personal_ai_name"] = new_ai
-                save_db(db)
-                st.success("Profile Updated!")
-                st.rerun()
+                pos_ent.config(state="disabled")
 
-        if st.sidebar.button("Log Out", use_container_width=True):
-            st.session_state.user = None
-            st.rerun()
+            # Practice Only & Role Controls (S.A Only)
+            if self.current_user['role'] == 's.a':
+                ctl_frame = ttk.Frame(f)
+                ctl_frame.pack(fill="x", pady=5)
 
-auth_section()
+                p_var = tk.BooleanVar(value=u.get("practice_only", False))
+                p_chk = ttk.Checkbutton(ctl_frame, text="Practice Match Only Player", variable=p_var, command=lambda uid=u['id'], v=p_var: self.toggle_practice(uid, v.get()))
+                p_chk.pack(side="left", padx=5)
 
-# ==========================================
-# 5. BLOCKED USER AUDIT OVERRIDE
-# ==========================================
-if st.session_state.user and db["users"][st.session_state.user]["is_blocked"]:
-    st.error("⛔ Account Status: Blocked for Fair-Play Violation")
-    u_data = db["users"][st.session_state.user]
-    
-    st.subheader("✉️ One-Time Appeal to Superadmin")
-    if not u_data.get("has_appealed", False):
-        appeal_msg = st.text_area("Write your final appeal message:")
-        if st.button("Send Appeal"):
-            db["notices"].append({
-                "author": f"APPEAL ({st.session_state.user})",
-                "content": appeal_msg,
-                "date": str(datetime.date.today())
-            })
-            db["users"][st.session_state.user]["has_appealed"] = True
-            save_db(db)
-            st.success("Appeal transmitted directly to Superadmin.")
-            st.rerun()
-    else:
-        st.info("You have already submitted your single allowed appeal.")
+                ttk.Label(ctl_frame, text="Role:").pack(side="left", padx=(10, 2))
+                role_cb = ttk.Combobox(ctl_frame, values=["user", "a", "s.a"], width=7, state="readonly")
+                role_cb.set(u['role'])
+                role_cb.pack(side="left")
+                role_cb.bind("<<ComboboxSelected>>", lambda e, uid=u['id'], cb=role_cb: self.change_role(uid, cb.get()))
 
-    st.subheader("🚩 Fair-Play Audit Request")
-    if st.button("Run AI Block Audit"):
-        blocker_reason = u_data.get("block_reason", "")
-        if not evaluate_block_validity(blocker_reason):
-            db["users"][st.session_state.user]["is_blocked"] = False
-            save_db(db)
-            st.success("AI Audit: Block reason unjustified! You are unblocked.")
-            st.rerun()
-        else:
-            st.error("AI Audit: Block confirmed as justified.")
-    st.stop()
+            # Block / Unblock Button (S.A & Admin)
+            block_btn_txt = "Unblock Player" if u.get("is_blocked") else "Block Player"
+            ttk.Button(f, text=block_btn_txt, command=lambda uid=u['id']: self.toggle_block(uid)).pack(anchor="e", pady=5)
 
-# ==========================================
-# 6. HEADER BRANDING & LOGO
-# ==========================================
-col_logo, col_title = st.columns([1, 5])
-with col_logo:
-    if db["app_config"].get("photo_path") and os.path.exists(db["app_config"]["photo_path"]):
-        st.image(db["app_config"]["photo_path"], width=90)
-    else:
-        st.title("⚽")
-with col_title:
-    st.title(db["app_config"]["app_name"])
+    def save_position(self, user_id, new_pos):
+        user = next((u for u in self.db['users'] if u['id'] == user_id), None)
+        if user:
+            user['position'] = new_pos.strip() or "Unassigned"
+            self.save_data()
+            messagebox.showinfo("Success", "Position updated successfully!")
+            self.refresh_dashboard()
 
-st.divider()
+    def toggle_practice(self, user_id, status):
+        user = next((u for u in self.db['users'] if u['id'] == user_id), None)
+        if user:
+            user['practice_only'] = status
+            self.save_data()
 
-# ==========================================
-# 7. MAIN NAVIGATION TABS
-# ==========================================
-tab_dir, tab_rate, tab_squad, tab_ai, tab_notice, tab_chat, tab_admin = st.tabs([
-    "📋 Directory", "⭐ Rating Panel", "⚽ Squad Generator", 
-    "🤖 Football & Personal AI", "📢 Notice Board", "💬 Club Chat", "👑 Admin Controls"
-])
+    def change_role(self, user_id, new_role):
+        user = next((u for u in self.db['users'] if u['id'] == user_id), None)
+        if user:
+            user['role'] = new_role
+            self.save_data()
+            messagebox.showinfo("Success", f"User role updated to {new_role.upper()}!")
+            self.refresh_dashboard()
 
-# ------------------------------------------
-# TAB 1: PUBLIC PLAYER DIRECTORY
-# ------------------------------------------
-with tab_dir:
-    st.subheader("📋 Public Player Roster & Position List")
-    roster = []
-    is_admin = st.session_state.user and db["users"][st.session_state.user]["role"] in ["Admin", "Superadmin"]
-    
-    # Rating-wise descending sorting
-    sorted_users = sorted(db["users"].keys(), key=lambda x: calculate_effective_rating(x, db), reverse=True)
-    
-    for u in sorted_users:
-        d = db["users"][u]
-        eff = calculate_effective_rating(u, db)
-        is_star = eff > 8.5
-        roster.append({
-            "Jersey #": f"#{d['jersey_number']}",
-            "Full Name": d["full_name"],
-            "Display Name": d["jersey_name"],
-            "Position": d["preferred_position"],
-            "Role": d["role"],
-            "Status": "⭐ Star Player" if is_star else "Standard",
-            "Effective Rating": eff if is_admin else "Hidden (Admin Only)"
-        })
-    st.dataframe(pd.DataFrame(roster), use_container_width=True)
+    def toggle_block(self, user_id):
+        user = next((u for u in self.db['users'] if u['id'] == user_id), None)
+        if user:
+            user['is_blocked'] = not user.get('is_blocked', False)
+            self.save_data()
+            status = "Blocked" if user['is_blocked'] else "Unblocked"
+            messagebox.showinfo("Success", f"User {user['username']} is now {status}!")
+            self.refresh_dashboard()
 
-# ------------------------------------------
-# TAB 2: PEER RATING & METRIC CORRECTION PANEL
-# ------------------------------------------
-with tab_rate:
-    st.subheader("⭐ Peer Rating & Entry Corrections")
-    if not st.session_state.user:
-        st.warning("Please log in to rate teammates.")
-    else:
-        st.markdown("#### Rate Teammates")
-        other_players = [u for u in db["users"].keys() if u != st.session_state.user]
-        if other_players:
-            target_p = st.selectbox("Select Player to Rate", other_players)
-            given_r = st.slider("Rating Score (0.0 - 10.0)", 0.0, 10.0, 7.0, step=0.1)
-            given_f = st.slider("Foul Score Penalty (0.0 - 10.0)", 0.0, 10.0, 0.0, step=0.1)
-            
-            if st.button("Submit Peer Rating"):
-                db["ratings"][target_p]["evaluations_received"][st.session_state.user] = given_r
-                db["ratings"][target_p]["foul_score"] = given_f
-                save_db(db)
-                st.success(f"Evaluation submitted for {target_p}.")
-        
-        st.divider()
-        st.markdown("#### ✏️ Self Base Metric Correction")
-        my_r = db["ratings"][st.session_state.user]
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            corr_r = st.number_input("Base Rating", 0.0, 10.0, float(my_r.get("base_rating", 6.0)), step=0.1)
-        with col_c2:
-            corr_f = st.number_input("Foul Score", 0.0, 10.0, float(my_r.get("foul_score", 0.0)), step=0.1)
-            
-        if st.button("Apply Metric Correction"):
-            db["ratings"][st.session_state.user]["base_rating"] = corr_r
-            db["ratings"][st.session_state.user]["foul_score"] = corr_f
-            save_db(db)
-            st.success("Metrics updated successfully.")
+    # Master Reset (Delete notices, chat, ai_chat WITHOUT deleting User IDs)
+    def master_reset(self):
+        if self.current_user['role'] != 's.a':
+            return
+        if messagebox.askyesno("Master Refresh", "Are you sure? This will delete ALL Notices, Group Chats, and AI Chats without deleting User IDs!"):
+            self.db['notices'] = []
+            self.db['chats'] = []
+            self.db['ai_chats'] = []
+            self.save_data()
+            messagebox.showinfo("Complete", "Master Reset finished! All notices and chats are cleared.")
+            self.refresh_dashboard()
 
-# ------------------------------------------
-# TAB 3: AI SQUAD GENERATOR & POSTING
-# ------------------------------------------
-with tab_squad:
-    st.subheader("⚽ Automated AI Squad Generator")
-    col1, col2 = st.columns(2)
-    with col1:
-        num_players = st.number_input("Starting Player Count", 4, 11, 11)
-        day_mode = st.selectbox("Preparation Mode", ["Saturday (Match Day Prep)", "Non-Saturday (Practice Prep)"])
-    with col2:
-        opp_tactics = st.text_area("Opponent Tactics Input", "High press defensive style.")
-
-    if st.button("Generate & Publish Squad"):
-        active = [u for u, r in db["ratings"].items() if r.get("attendance", True) and not db["users"][u]["is_blocked"]]
-        ranked = sorted(active, key=lambda x: calculate_effective_rating(x, db), reverse=True)
-        fmt, pos_map = generate_dynamic_formation(num_players)
-        
-        if "Saturday" in day_mode:
-            starters = ranked[:num_players]
-            subs = ranked[num_players:]
-            squad_text = f"📢 **MATCH DAY SQUAD ({fmt})**\n\n"
-            squad_text += "**Starters:**\n" + "\n".join([f"- #{db['users'][p]['jersey_number']} {db['users'][p]['jersey_name']} ({calculate_effective_rating(p, db)})" for p in starters]) + "\n\n"
-            squad_text += "**Substitutes:**\n" + "\n".join([f"- {i+1}st Sub: {db['users'][p]['jersey_name']}" for i, p in enumerate(subs)]) + "\n\n"
-            squad_text += f"**Tactical Focus:** Countering opponent's tactic ({opp_tactics})."
-        else:
-            team_a = ranked[0::2]
-            team_b = ranked[1::2]
-            squad_text = f"📢 **PRACTICE TEAMS (BALANCED AGGREGATE)**\n\n"
-            squad_text += "**Team A:** " + ", ".join([db["users"][p]["jersey_name"] for p in team_a]) + "\n\n"
-            squad_text += "**Team B:** " + ", ".join([db["users"][p]["jersey_name"] for p in team_b])
-
-        # Auto-post to Notice Board if Superadmin/Admin or AI
-        can_post = st.session_state.user and db["users"][st.session_state.user]["role"] in ["Admin", "Superadmin"]
-        if can_post:
-            db["notices"].append({"author": f"AI Squad ({st.session_state.user})", "content": squad_text, "date": str(datetime.date.today())})
-            save_db(db)
-            st.success("Squad directly posted to Official Notice Board!")
-        else:
-            st.info("Generated Squad preview (Only Admins/Superadmins can publish directly):")
-            
-        st.markdown(squad_text)
-
-# ------------------------------------------
-# TAB 4: DUAL AI COMMUNICATION PORTAL
-# ------------------------------------------
-with tab_ai:
-    st.subheader("🤖 Dual AI Communication System")
-    col_f, col_p = st.columns(2)
-    
-    with col_f:
-        st.markdown(f"### ⚽ Public Football AI")
-        st.caption("Public AI: Answers posted automatically to Notice Board.")
-        f_q = st.text_input("Ask Football AI a tactical question:")
-        if st.button("Ask Football AI"):
-            if f_q:
-                ans = f"Tactical Advice: Maintain compact lines and shift quickly during turnovers."
-                db["notices"].append({
-                    "author": f"Football AI Q&A ({st.session_state.user or 'Guest'})", 
-                    "content": f"**Q:** {f_q}\n\n**A:** {ans}", 
-                    "date": str(datetime.date.today())
-                })
-                save_db(db)
-                st.success("Answer posted to Notice Board!")
-                st.rerun()
-
-    with col_p:
-        if st.session_state.user:
-            ai_name = db["users"][st.session_state.user]["personal_ai_name"]
-            st.markdown(f"### 🤖 Personal AI (`{ai_name}`)")
-            st.caption("Private AI: Strictly confidential to your account.")
-            p_q = st.text_input("Ask Personal AI private advice:")
-            if st.button("Ask Personal AI"):
-                if p_q:
-                    if st.session_state.user not in db["ai_chats"]:
-                        db["ai_chats"][st.session_state.user] = []
-                    db["ai_chats"][st.session_state.user].append({
-                        "q": p_q, 
-                        "a": "Personal Strategy: Focus on off-the-ball movement and early vision."
-                    })
-                    save_db(db)
-                    st.rerun()
-                    
-            if st.session_state.user in db["ai_chats"]:
-                for c in reversed(db["ai_chats"][st.session_state.user]):
-                    st.markdown(f"**You:** {c['q']}")
-                    st.markdown(f"**{ai_name}:** {c['a']}")
-                    st.divider()
-
-# ------------------------------------------
-# TAB 5: NOTICE BOARD & MOTM VOTING
-# ------------------------------------------
-with tab_notice:
-    st.subheader("📢 Official Notice Board")
-    
-    # Notice Posting Panel for Admin & Superadmin
-    if st.session_state.user and db["users"][st.session_state.user]["role"] in ["Admin", "Superadmin"]:
-        with st.expander("📌 Post New Announcement (Admin / Superadmin Only)"):
-            n_text = st.text_area("Announcement Message:")
-            if st.button("Publish Announcement"):
-                if n_text:
-                    db["notices"].append({
-                        "author": f"{db['users'][st.session_state.user]['role']} ({st.session_state.user})",
-                        "content": n_text,
-                        "date": str(datetime.date.today())
-                    })
-                    save_db(db)
-                    st.success("Notice published!")
-                    st.rerun()
-
-    st.markdown("#### 🏆 Sunday Man of the Match (MOTM) Poll")
-    motm_pick = st.selectbox("Select MOTM Nominee:", [d["full_name"] for d in db["users"].values()])
-    if st.button("Submit MOTM Vote"):
-        if st.session_state.user:
-            db["motm_votes"][st.session_state.user] = motm_pick
-            save_db(db)
-            st.success("Vote registered.")
-            
-    if st.session_state.user and db["users"][st.session_state.user]["role"] in ["Admin", "Superadmin"]:
-        if st.button("Finalize & Publish MOTM Winner"):
-            if db["motm_votes"]:
-                winner = max(set(db["motm_votes"].values()), key=list(db["motm_votes"].values()).count)
-                db["notices"].append({
-                    "author": "Football AI", 
-                    "content": f"🏆 **SUNDAY MOTM WINNER:** {winner}", 
-                    "date": str(datetime.date.today())
-                })
-                save_db(db)
-                st.rerun()
-
-    st.divider()
-    for n in reversed(db["notices"]):
-        st.markdown(f"**[{n['date']}] {n['author']}**")
-        st.markdown(f"{n['content']}")
-        st.divider()
-
-# ------------------------------------------
-# TAB 6: WHATSAPP-STYLE GROUP CHAT
-# ------------------------------------------
-with tab_chat:
-    st.subheader("💬 Club House Group Chat")
-    
-    # Render Message Stream
-    chat_container = st.container()
-    with chat_container:
-        for m in db["chat_messages"]:
-            # Check if user is blocked
-            if not db["users"].get(m["user"], {}).get("is_blocked", False):
-                is_me = m["user"] == st.session_state.user
-                css_class = "chat-bubble-me" if is_me else "chat-bubble-other"
-                st.markdown(f"""
-                    <div class="{css_class}">
-                        <small><b>{m['user']}</b></small><br>{m['text']}
-                    </div>
-                """, unsafe_allow_html=True)
-            
-    if st.session_state.user:
-        msg_in = st.text_input("Type a message...", key="c_in")
-        if st.button("Send Message"):
-            if msg_in:
-                db["chat_messages"].append({"user": st.session_state.user, "text": msg_in})
-                save_db(db)
-                st.rerun()
-
-# ------------------------------------------
-# TAB 7: ADMIN & SUPERADMIN CONTROL PANEL
-# ------------------------------------------
-with tab_admin:
-    if not st.session_state.user or db["users"][st.session_state.user]["role"] not in ["Admin", "Superadmin"]:
-        st.warning("⚠️ Access Restricted to Admins (a) and Superadmin (s.a).")
-    else:
-        role = db["users"][st.session_state.user]["role"]
-        
-        if role == "Superadmin":
-            st.markdown("### 👑 Superadmin (s.a) Control Center")
-            target_u = st.selectbox("Select User for Promotion/Demotion", list(db["users"].keys()))
-            c_sa1, c_sa2 = st.columns(2)
-            with c_sa1:
-                if st.button("Promote to Admin"):
-                    db["users"][target_u]["role"] = "Admin"
-                    save_db(db)
-                    st.success(f"{target_u} promoted to Admin.")
-            with c_sa2:
-                if st.button("Revoke Admin Role"):
-                    db["users"][target_u]["role"] = "Player"
-                    save_db(db)
-                    st.success(f"{target_u} demoted to Player.")
-
-            st.divider()
-            st.markdown("### 🧹 Master Reset (Data Cleanup)")
-            st.caption("Resets all chats, private AI records, and notices. User credentials remain intact.")
-            if st.button("EXECUTE MASTER RESET"):
-                db["chat_messages"] = []
-                db["ai_chats"] = {}
-                db["notices"] = []
-                db["motm_votes"] = {}
-                save_db(db)
-                st.warning("Master Reset Executed. All chat logs and notice board entries wiped!")
-                st.rerun()
-
-        st.divider()
-        st.markdown("### ⚙️ Club Maintenance & Settings")
-        
-        st.markdown("#### App Branding & Club Photo")
-        new_app_name = st.text_input("Change Club Name", value=db["app_config"]["app_name"])
-        uploaded_photo = st.file_uploader("Upload Club Photo / Logo", type=["png", "jpg", "jpeg"])
-        if st.button("Update Branding"):
-            db["app_config"]["app_name"] = new_app_name
-            if uploaded_photo:
-                path = f"assets/{uploaded_photo.name}"
-                if not os.path.exists("assets"):
-                    os.makedirs("assets")
-                with open(path, "wb") as f:
-                    f.write(uploaded_photo.getbuffer())
-                db["app_config"]["photo_path"] = path
-            save_db(db)
-            st.success("Branding and logo updated successfully.")
-            st.rerun()
-
-        st.markdown("#### Block User & Purge Chat")
-        b_target = st.selectbox("Select User to Block", list(db["users"].keys()), key="b_tgt")
-        b_reason = st.text_input("Reason for Blocking")
-        if st.button("Block User"):
-            db["users"][b_target]["is_blocked"] = True
-            db["users"][b_target]["block_reason"] = b_reason
-            db["chat_messages"] = [m for m in db["chat_messages"] if m["user"] != b_target]
-            save_db(db)
-            st.error(f"User {b_target} blocked and chat history purged.")
-
-        st.markdown("#### Assign Position & Attendance")
-        p_target = st.selectbox("Target Player", list(db["users"].keys()), key="p_tgt")
-        p_pos = st.selectbox("Assign Position", ["Goalkeeper", "Defender", "Midfielder", "Striker"])
-        p_att = st.checkbox("Attendance Status (Present)", value=True)
-        if st.button("Save Position & Attendance"):
-            db["users"][p_target]["preferred_position"] = p_pos
-            db["ratings"][p_target]["attendance"] = p_att
-            save_db(db)
-            st.success("Player details updated.")
-
-        st.markdown("#### Record Match Performance Stats")
-        m_target = st.selectbox("Match Player", list(db["users"].keys()), key="m_tgt")
-        col_g1, col_g2, col_g3 = st.columns(3)
-        with col_g1:
-            g = st.number_input("Goals", 0, 10, 0)
-        with col_g2:
-            a = st.number_input("Assists", 0, 10, 0)
-        with col_g3:
-            c = st.number_input("Goals Conceded", 0, 20, 0)
-        if st.button("Record Match Stats"):
-            db["ratings"][m_target]["goals"] += g
-            db["ratings"][m_target]["assists"] += a
-            db["ratings"][m_target]["conceded"] += c
-            save_db(db)
-            st.success("Match statistics recorded.")
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ClubApp(root)
+    root.mainloop()
