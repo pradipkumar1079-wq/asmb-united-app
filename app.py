@@ -6,6 +6,45 @@ import random
 import pandas as pd
 from PIL import Image
 import io
+import json
+import os
+
+# ==========================================
+# PERMANENT MEMORY FILE ENGINE (JSON STORAGE)
+# ==========================================
+DB_FILE = "asmb_football_club_data.json"
+
+def load_data_from_file():
+    """ফাইল থেকে সেভ থাকা ডাটা অ্যাপে নিয়ে আসে"""
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
+
+def save_data_to_file():
+    """মেমোরি সেভ রাখতে সব ডাটা ফাইলে রাইট করে"""
+    data_to_save = {
+        "app_settings": {
+            "app_name": st.session_state.app_settings.get("app_name", "ASMB United Football Club"),
+            "bg_color": st.session_state.app_settings.get("bg_color", "#0e1117")
+        },
+        "users": st.session_state.users,
+        "ratings_db": {f"{k[0]}|||{k[1]}": v for k, v in st.session_state.ratings_db.items()},
+        "player_stats": st.session_state.player_stats,
+        "group_chat": st.session_state.group_chat,
+        "football_ai_chats": st.session_state.football_ai_chats,
+        "personal_ai_chats": st.session_state.personal_ai_chats,
+        "notice_board": st.session_state.notice_board,
+        "motm_votes": st.session_state.motm_votes,
+        "injured_players": list(st.session_state.injured_players),
+        "match_settings": st.session_state.match_settings,
+        "block_appeals": st.session_state.block_appeals
+    }
+    with open(DB_FILE, "w") as f:
+        json.dump(data_to_save, f, indent=4)
 
 # ==========================================
 # 0. PAGE CONFIG & PERSISTENT SESSION STATE
@@ -18,56 +57,67 @@ st.set_page_config(
 )
 
 def init_db():
-    """Initialize global database tables in Streamlit's persistent session state."""
+    """Initialize global database tables and restore permanent memory."""
     if "db_initialized" not in st.session_state:
-        # Dynamic Customization App Settings
-        st.session_state.app_settings = {
-            "app_name": "ASMB United Football Club",
-            "club_photo": None,
-            "bg_color": "#0e1117"  # Dynamic background daily color
-        }
+        saved_data = load_data_from_file()
         
-        # User Directory
-        # Table Schema: username (PK), password, full_name, jersey_num, jersey_name, photo, personal_ai_name, role, position, status, block_reason
-        st.session_state.users = {}
-        
-        # Ratings & Fouls Directory
-        # Key: (rater_username, target_username) -> {"rating": float, "fouls": int}
-        st.session_state.ratings_db = {}
-        
-        # Player Performance Adjustments & Stats
-        # Key: username -> {"goals": int, "assists": int, "conceded_penalty": float, "attendance": str, "rating_penalty": float}
-        st.session_state.player_stats = {}
-        
-        # Group Chat Messages List: [{"sender": str, "message": str, "timestamp": str}]
-        st.session_state.group_chat = []
-        
-        # Football AI Conversations List (Public): [{"sender": str, "prompt": str, "response": str, "timestamp": str}]
-        st.session_state.football_ai_chats = []
-        
-        # Personal AI Conversations Dict: {username: [{"prompt": str, "response": str, "timestamp": str}]}
-        st.session_state.personal_ai_chats = {}
-        
-        # Notice Board List: [{"id": int, "author": str, "title": str, "content": str, "timestamp": str, "type": str}]
-        st.session_state.notice_board = []
-        
-        # MOTM Sunday Polls: {username: voted_target_username}
-        st.session_state.motm_votes = {}
-        
-        # Star & Injured Lists: set of usernames
-        st.session_state.injured_players = set()
-        
-        # Matchday / Practice Settings
-        st.session_state.match_settings = {
-            "asmb_player_count": 11,
-            "opponent_player_count": 11,
-            "opponent_formation": "4-4-2",
-            "goals_conceded": 0
-        }
-        
-        # Block Appeals: {username: appeal_message}
-        st.session_state.block_appeals = {}
-        
+        if saved_data:
+            # আগের সেভ করা ডাটা লোড করা হচ্ছে
+            st.session_state.app_settings = saved_data.get("app_settings", {
+                "app_name": "ASMB United Football Club",
+                "club_photo": None,
+                "bg_color": "#0e1117"
+            })
+            st.session_state.app_settings["club_photo"] = None
+            st.session_state.users = saved_data.get("users", {})
+            
+            # Key conversion for ratings_db
+            raw_ratings = saved_data.get("ratings_db", {})
+            st.session_state.ratings_db = {}
+            for key_str, val in raw_ratings.items():
+                parts = key_str.split("|||")
+                if len(parts) == 2:
+                    st.session_state.ratings_db[(parts[0], parts[1])] = val
+
+            st.session_state.player_stats = saved_data.get("player_stats", {})
+            st.session_state.group_chat = saved_data.get("group_chat", [])
+            st.session_state.football_ai_chats = saved_data.get("football_ai_chats", [])
+            st.session_state.personal_ai_chats = saved_data.get("personal_ai_chats", {})
+            st.session_state.notice_board = saved_data.get("notice_board", [])
+            st.session_state.motm_votes = saved_data.get("motm_votes", {})
+            st.session_state.injured_players = set(saved_data.get("injured_players", []))
+            st.session_state.match_settings = saved_data.get("match_settings", {
+                "asmb_player_count": 11,
+                "opponent_player_count": 11,
+                "opponent_formation": "4-4-2",
+                "goals_conceded": 0
+            })
+            st.session_state.block_appeals = saved_data.get("block_appeals", {})
+        else:
+            # প্রথমবার ফ্রেশ ইনিশিয়ালাইজেশন
+            st.session_state.app_settings = {
+                "app_name": "ASMB United Football Club",
+                "club_photo": None,
+                "bg_color": "#0e1117"
+            }
+            st.session_state.users = {}
+            st.session_state.ratings_db = {}
+            st.session_state.player_stats = {}
+            st.session_state.group_chat = []
+            st.session_state.football_ai_chats = []
+            st.session_state.personal_ai_chats = {}
+            st.session_state.notice_board = []
+            st.session_state.motm_votes = {}
+            st.session_state.injured_players = set()
+            st.session_state.match_settings = {
+                "asmb_player_count": 11,
+                "opponent_player_count": 11,
+                "opponent_formation": "4-4-2",
+                "goals_conceded": 0
+            }
+            st.session_state.block_appeals = {}
+            save_data_to_file()
+            
         st.session_state.db_initialized = True
 
 init_db()
@@ -75,48 +125,18 @@ init_db()
 # ==========================================
 # 1. DYNAMIC CSS & BRANDING OVERRIDES
 # ==========================================
-
-def execute_daily_ai_background_script():
-    """প্রতিদিন অটোমেটিকভাবে উজ্জ্বল (Bright) ব্যাকগ্রাউন্ড কালার পরিবর্তন করার AI স্ক্রিপ্ট"""
-    # উজ্জ্বল এবং আই-ক্যাচিং কালার প্যালেট (Bright & Vibrant Colors)
-    bright_colors = [
-        "#00D2FF",  # Bright Electric Blue
-        "#FF5E7E",  # Vibrant Coral Pink
-        "#FFD166",  # Vibrant Warm Yellow
-        "#06D6A0",  # Bright Mint Green
-        "#A29BFE",  # Bright Lavender / Soft Purple
-        "#FF9F43",  # Vibrant Orange
-        "#00CECB"   # Bright Turquoise
-    ]
-    today_index = datetime.datetime.now().day % len(bright_colors)
-    
-    if "custom_bg_set" not in st.session_state:
-        st.session_state.app_settings["bg_color"] = bright_colors[today_index]
-
-# ব্যাকগ্রাউন্ড কালার আপডেট স্ক্রিপ্ট কল
-execute_daily_ai_background_script()
-
-# ডিফল্ট উজ্জ্বল কালার (#00D2FF) এবং সেশন স্টেট থেকে ব্যাকগ্রাউন্ড রিড করা
-bg_color = st.session_state.app_settings.get("bg_color", "#00D2FF")
-
+bg_color = st.session_state.app_settings.get("bg_color", "#0e1117")
 st.markdown(f"""
     <style>
-    /* Dynamic AI Bright Background Color */
+    /* Dynamic AI Background Color */
     .stApp {{
-        background-color: {bg_color} !important;
+        background-color: {bg_color};
     }}
-    
-    /* উজ্জ্বল ব্যাকগ্রাউন্ডে টেক্সট যেন পরিষ্কার দেখা যায় সেটির অ্যাডজাস্টমেন্ট */
-    .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp span, .stApp label {{
-        color: #000000 !important;
-        font-weight: 600;
-    }}
-
     /* Strict Button Override Rules */
     div.stButton > button {{
         background-color: #000000 !important;
         color: #FFFFFF !important;
-        border: 2px solid #000000 !important;
+        border: 1px solid #333333 !important;
         border-radius: 6px !important;
         font-weight: bold !important;
     }}
@@ -127,54 +147,46 @@ st.markdown(f"""
     }}
     </style>
 """, unsafe_allow_html=True)
+
 # ==========================================
 # 2. HELPER CALCULATORS & BUSINESS LOGIC
 # ==========================================
 def compute_player_rating(username):
-    """Calculates player net rating factoring base ratings, fouls, goals, assists, conceded penalties, and admin penalties."""
-    # Base user ratings from teammates
     user_ratings = [data["rating"] for (rater, target), data in st.session_state.ratings_db.items() if target == username]
     user_fouls = [data["fouls"] for (rater, target), data in st.session_state.ratings_db.items() if target == username]
     
     base_rating = (sum(user_ratings) / len(user_ratings)) if user_ratings else 6.0
     avg_fouls = (sum(user_fouls) / len(user_fouls)) if user_fouls else 0.0
     
-    # Adjustments
     stats = st.session_state.player_stats.get(username, {"goals": 0, "assists": 0, "conceded_penalty": 0.0, "attendance": "Present", "rating_penalty": 0.0})
     
-    # Rating adjustment matrix: Base + Goals + Assists - Fouls Penalty - Defensive Penalty - Fairplay Penalty
     goals_bonus = stats["goals"] * 0.5
     assists_bonus = stats["assists"] * 0.3
     foul_penalty = avg_fouls * 0.2
     
     net_rating = base_rating + goals_bonus + assists_bonus - foul_penalty - stats["conceded_penalty"] - stats["rating_penalty"]
     
-    # Attendance Factor
     if stats.get("attendance") == "Absent":
         net_rating -= 1.0
         
     return max(0.0, min(10.0, round(net_rating, 2)))
 
 def update_star_players():
-    """Automatically designates any player with total rating above 8.5 as a Star Player."""
     for uname, udata in st.session_state.users.items():
         rating = compute_player_rating(uname)
-        # Star designation
         if rating > 8.5:
             udata["is_star"] = True
         else:
             udata["is_star"] = False
 
 def audit_block_reason(reason):
-    """Personal AI automated audit logic to assess block validity."""
     invalid_keywords = ["test", "joke", "nothing", "fun", "no reason", "random", "asdf", "lol"]
     clean_reason = reason.strip().lower()
     if len(clean_reason) < 5 or any(k in clean_reason for k in invalid_keywords):
-        return False  # Unjustified block
-    return True  # Valid block
+        return False
+    return True
 
 def execute_daily_ai_background_script():
-    """Simulates automated AI background update script."""
     colors = ["#0e1117", "#121824", "#1a0f1a", "#0f1a18", "#1c1912"]
     today_index = datetime.datetime.now().day % len(colors)
     st.session_state.app_settings["bg_color"] = colors[today_index]
@@ -189,7 +201,7 @@ if "authenticated_user" not in st.session_state:
 
 def login_register_surface():
     st.title("⚽ " + st.session_state.app_settings["app_name"])
-    if st.session_state.app_settings["club_photo"]:
+    if st.session_state.app_settings.get("club_photo"):
         st.image(st.session_state.app_settings["club_photo"], width=300)
         
     tab1, tab2 = st.tabs(["🔒 Member Login", "📝 New Registration"])
@@ -221,7 +233,6 @@ def login_register_surface():
         reg_photo = st.file_uploader("Photo Upload (Optional)", type=["jpg", "png", "jpeg"])
         reg_personal_ai = st.text_input("Personal AI Custom Name*", value="Jarvis", key="reg_pai")
         
-        # Position input logic
         is_first_user = len(st.session_state.users) == 0
         if is_first_user:
             st.info("ℹ️ You are the first registered user. You will automatically be granted Superadmin (S.A) privileges!")
@@ -235,25 +246,19 @@ def login_register_surface():
                 st.error("Please fill in all mandatory fields.")
                 return
             
-            # Duplicate registration constraint
             if reg_username in st.session_state.users:
                 st.error("⚠️ Username already exists! Redirecting duplicate registration attempt to Login surface...")
                 st.rerun()
                 return
             
-            # Photo processing
-            photo_bytes = reg_photo.read() if reg_photo else None
-            
-            # Role Determination
             role = "Superadmin" if is_first_user else "Player"
             
-            # Register User
             st.session_state.users[reg_username] = {
                 "password": reg_password,
                 "full_name": reg_full_name,
                 "jersey_num": reg_jersey_num,
                 "jersey_name": reg_jersey_name,
-                "photo": photo_bytes,
+                "photo": None,
                 "personal_ai_name": reg_personal_ai,
                 "role": role,
                 "position": reg_position,
@@ -262,10 +267,12 @@ def login_register_surface():
                 "is_star": False
             }
             
-            # Initialize stats
             st.session_state.player_stats[reg_username] = {
                 "goals": 0, "assists": 0, "conceded_penalty": 0.0, "attendance": "Present", "rating_penalty": 0.0
             }
+            
+            # Save data to memory file
+            save_data_to_file()
             
             st.success("Registration successful! Redirecting to login...")
             st.rerun()
@@ -281,10 +288,7 @@ curr_username = st.session_state.authenticated_user
 curr_user = st.session_state.users[curr_username]
 update_star_players()
 
-# SIDEBAR & LOGOUT
 st.sidebar.title(st.session_state.app_settings["app_name"])
-if curr_user["photo"]:
-    st.sidebar.image(curr_user["photo"], width=100)
 st.sidebar.markdown(f"**Logged in as:** {curr_user['full_name']} (`@{curr_username}`)")
 st.sidebar.markdown(f"**Role:** `{curr_user['role']}` | **Position:** `{curr_user['position']}`")
 
@@ -297,7 +301,6 @@ if st.sidebar.button("Logout", key="btn_logout"):
 
 st.sidebar.divider()
 
-# Navigation Tabs
 if curr_user["status"] == "Blocked":
     nav_choice = "🚩 Blocked Dashboard / Appeals"
 else:
@@ -330,6 +333,7 @@ if curr_user["status"] == "Blocked":
         if st.button("Submit Final Appeal", key="btn_submit_appeal"):
             if appeal_msg.strip():
                 st.session_state.block_appeals[curr_username] = appeal_msg.strip()
+                save_data_to_file()
                 st.success("Your appeal message has been submitted to the Superadmin.")
                 st.rerun()
             else:
@@ -342,14 +346,13 @@ if curr_user["status"] == "Blocked":
 if nav_choice == "📌 Notice Board & News":
     st.header("📌 Official Notice Board & Communications")
     
-    # Official Notices display
     if not st.session_state.notice_board:
         st.info("No notices posted yet.")
     else:
         for notice in reversed(st.session_state.notice_board):
             with st.expander(f"[{notice['type']}] {notice['title']} - {notice['timestamp']} (By: {notice['author']})", expanded=True):
                 st.markdown(notice['content'])
-                
+
 # ==========================================
 # 7. FEATURE MODULE: PLAYER DIRECTORY & ROSTERS
 # ==========================================
@@ -416,8 +419,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
         
         if st.button("Generate Match Squad", key="btn_gen_squad"):
             active_players = [u for u, udata in st.session_state.users.items() if udata["status"] == "Active" and u not in st.session_state.injured_players]
-            
-            # Sort strictly in descending order of ratings
             sorted_players = sorted(active_players, key=lambda u: compute_player_rating(u), reverse=True)
             
             starters = sorted_players[:target_count]
@@ -443,7 +444,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     st.markdown(line)
                     squad_notice_text += f"{line}\n"
             
-            # Dynamic Tactical Formation Logic
             if target_count < 11:
                 formation = f"Adaptive Custom {target_count}-a-side Formation (Optimized Balance)"
             else:
@@ -452,7 +452,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             squad_notice_text += f"\n**Tactical Formation:** {formation}"
             st.success(f"**Tactical Formation Engine:** {formation}")
             
-            # Auto Publish to Notice Board
             st.session_state.notice_board.append({
                 "id": len(st.session_state.notice_board) + 1,
                 "author": st.session_state.app_settings["app_name"] + " (Football AI)",
@@ -461,6 +460,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "type": "Match Announcement"
             })
+            save_data_to_file()
             st.info("📢 Match squad automatically published to Notice Board!")
 
     elif day_selection == "Practice Day (Mon-Thu Team Split)":
@@ -472,7 +472,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             team_a, team_b = [], []
             rate_a, rate_b = 0.0, 0.0
             
-            # Snake draft allocation for equalized aggregate ratings
             for idx, p in enumerate(sorted_players):
                 r = compute_player_rating(p)
                 if idx % 2 == 0:
@@ -499,20 +498,15 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
 # ==========================================
 elif nav_choice == "⭐ Teammate Ratings & Fouls":
     st.header("⭐ Teammate Performance Rating & Foul Management")
-    
     st.info("🔒 **Rating Visibility Rules:** Peer ratings are hidden during general browsing. Ratings become visible in squad views or to S.A/Admins.")
     
-    # Rating Guide Link
     with st.expander("📖 View Official Rating & Foul Scoring Guide Panel"):
         st.markdown("""
         **Rating Scale Guide (0.0 to 10.0):**
-        - **9.0 - 10.0:** World Class / Match Winner (Automatic Star Player above 8.5)
+        - **9.0 - 10.0:** World Class / Match Winner
         - **7.5 - 8.9:** Outstanding Performance
         - **6.0 - 7.4:** Solid / Average Performance
         - **0.0 - 5.9:** Poor Performance / Disciplinary Issues
-        
-        **Foul Scale Guide (0 to 10):**
-        - Tracks tactical fouls, yellow/red card infractions, and unsportsmanlike behavior.
         """)
         
     st.subheader("Submit / Edit Teammate Rating")
@@ -523,11 +517,9 @@ elif nav_choice == "⭐ Teammate Ratings & Fouls":
     else:
         selected_target = st.selectbox("Select Teammate to Rate:", target_users)
         
-        # Self-rating prohibition enforcement
         if selected_target == curr_username:
             st.error("⛔ Self-rating is strictly prohibited!")
         else:
-            # Check existing submission for correction panel
             existing_entry = st.session_state.ratings_db.get((curr_username, selected_target), {"rating": 6.0, "fouls": 0})
             
             st.markdown("### Rating Correction / Override Panel")
@@ -539,6 +531,7 @@ elif nav_choice == "⭐ Teammate Ratings & Fouls":
                     "rating": round(new_rating, 2),
                     "fouls": new_fouls
                 }
+                save_data_to_file()
                 st.success(f"Successfully recorded rating for @{selected_target}!")
 
 # ==========================================
@@ -547,7 +540,6 @@ elif nav_choice == "⭐ Teammate Ratings & Fouls":
 elif nav_choice == "💬 Club House Group Chat":
     st.header("💬 ASMB United WhatsApp-Style Member Chat")
     
-    # Message Display
     chat_container = st.container()
     with chat_container:
         if not st.session_state.group_chat:
@@ -565,6 +557,7 @@ elif nav_choice == "💬 Club House Group Chat":
                 "message": msg_input.strip(),
                 "timestamp": datetime.datetime.now().strftime("%H:%M")
             })
+            save_data_to_file()
             st.rerun()
 
 # ==========================================
@@ -574,7 +567,6 @@ elif nav_choice == "🤖 Football AI (Public)":
     st.header(f"🤖 Football AI - Public Assistant ({st.session_state.app_settings['app_name']})")
     st.caption("ℹ️ Public Assistant. All queries and responses are publicly visible to all members.")
     
-    # Display public chat logs
     for chat in st.session_state.football_ai_chats:
         st.markdown(f"**👤 {chat['sender']} ({chat['timestamp']}):** {chat['prompt']}")
         st.markdown(f"🤖 **Football AI:** {chat['response']}")
@@ -583,7 +575,6 @@ elif nav_choice == "🤖 Football AI (Public)":
     prompt = st.text_input("Ask Football AI regarding tactics, counter-plays, or team advice:", key="f_ai_prompt")
     if st.button("Ask Football AI", key="btn_ask_fai"):
         if prompt.strip():
-            # Simulated Football AI Intelligence
             resp = f"Tactical Analysis for '{prompt}': Maintain high pressing intensity, utilize overlap wing play, and restrict space between defensive lines."
             st.session_state.football_ai_chats.append({
                 "sender": curr_user["full_name"],
@@ -591,6 +582,7 @@ elif nav_choice == "🤖 Football AI (Public)":
                 "response": resp,
                 "timestamp": datetime.datetime.now().strftime("%H:%M")
             })
+            save_data_to_file()
             st.rerun()
 
 # ==========================================
@@ -606,7 +598,6 @@ elif nav_choice == "👤 Personal AI (Private)":
         
     user_p_chats = st.session_state.personal_ai_chats[curr_username]
     
-    # Display private chats
     for chat in user_p_chats:
         st.markdown(f"**You ({chat['timestamp']}):** {chat['prompt']}")
         st.markdown(f"🤖 **{pai_name}:** {chat['response']}")
@@ -621,6 +612,7 @@ elif nav_choice == "👤 Personal AI (Private)":
                 "response": resp,
                 "timestamp": datetime.datetime.now().strftime("%H:%M")
             })
+            save_data_to_file()
             st.rerun()
             
     st.divider()
@@ -630,17 +622,15 @@ elif nav_choice == "👤 Personal AI (Private)":
     
     if st.button("Submit MOTM Vote", key="btn_vote_motm"):
         st.session_state.motm_votes[curr_username] = motm_vote
+        save_data_to_file()
         st.success(f"Vote cast successfully for @{motm_vote}!")
         
-        # Aggregation check
         total_votes = len(st.session_state.motm_votes)
         if total_votes >= len(st.session_state.users) and len(st.session_state.users) > 0:
-            # Aggregate Winner
             votes_list = list(st.session_state.motm_votes.values())
             winner = max(set(votes_list), key=votes_list.count)
             winner_user = st.session_state.users[winner]
             
-            # Publish to Notice Board
             st.session_state.notice_board.append({
                 "id": len(st.session_state.notice_board) + 1,
                 "author": "Personal AI Aggregator",
@@ -649,6 +639,7 @@ elif nav_choice == "👤 Personal AI (Private)":
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "type": "MOTM Award"
             })
+            save_data_to_file()
 
 # ==========================================
 # 13. FEATURE MODULE: ADMIN CONTROL PANEL
@@ -656,7 +647,6 @@ elif nav_choice == "👤 Personal AI (Private)":
 elif nav_choice == "⚙️ Admin Control Panel":
     st.header("⚙️ Administrative Control & Management Panel")
     
-    # Permission Verification
     if curr_user["role"] not in ["Superadmin", "Admin"]:
         st.error("⛔ Access Denied. Administrative privileges required.")
         st.stop()
@@ -672,12 +662,10 @@ elif nav_choice == "⚙️ Admin Control Panel":
     with tab_branding:
         st.subheader("Dynamically Configure Branding & Notices")
         new_app_name = st.text_input("Application / Club Name:", value=st.session_state.app_settings["app_name"])
-        club_photo_file = st.file_uploader("Upload Header Photo", type=["jpg", "png", "jpeg"], key="admin_club_photo")
         
         if st.button("Update Branding Settings", key="btn_save_branding"):
             st.session_state.app_settings["app_name"] = new_app_name
-            if club_photo_file:
-                st.session_state.app_settings["club_photo"] = club_photo_file.read()
+            save_data_to_file()
             st.success("App branding updated successfully!")
             st.rerun()
             
@@ -695,6 +683,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
                     "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "type": "Official Announcement"
                 })
+                save_data_to_file()
                 st.success("Notice posted successfully!")
                 st.rerun()
 
@@ -708,6 +697,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
             new_pos = st.selectbox("Position:", ["GK", "CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"], key="select_new_pos")
             if st.button("Update Position", key="btn_update_pos"):
                 st.session_state.users[target_role_user]["position"] = new_pos
+                save_data_to_file()
                 st.success(f"Updated position of @{target_role_user} to {new_pos}!")
                 st.rerun()
                 
@@ -716,11 +706,13 @@ elif nav_choice == "⚙️ Admin Control Panel":
                 st.markdown("### Grant / Dismiss Admin Role")
                 if st.button("Promote to Admin", key="btn_promote"):
                     st.session_state.users[target_role_user]["role"] = "Admin"
+                    save_data_to_file()
                     st.success(f"Granted Admin privileges to @{target_role_user}!")
                     st.rerun()
                 if st.button("Dismiss Admin Role", key="btn_dismiss"):
                     if st.session_state.users[target_role_user]["role"] != "Superadmin":
                         st.session_state.users[target_role_user]["role"] = "Player"
+                        save_data_to_file()
                         st.success(f"Revoked Admin privileges from @{target_role_user}!")
                         st.rerun()
 
@@ -735,30 +727,29 @@ elif nav_choice == "⚙️ Admin Control Panel":
                 if not mandatory_reason.strip():
                     st.error("⛔ Every block action requires a mandatory Reason for Block entry!")
                 else:
-                    # Execute Block
                     target_u = st.session_state.users[block_target]
                     target_u["status"] = "Blocked"
                     target_u["block_reason"] = mandatory_reason.strip()
                     
-                    # Instantly purge chat messages & personal AI logs of blocked user
                     st.session_state.group_chat = [m for m in st.session_state.group_chat if f"(@{block_target})" not in m["sender"]]
                     if block_target in st.session_state.personal_ai_chats:
                         st.session_state.personal_ai_chats[block_target] = []
                         
                     st.warning(f"User @{block_target} has been blocked.")
                     
-                    # Execute Personal AI Arbitration Audit
                     valid = audit_block_reason(mandatory_reason)
                     if not valid:
-                        # Automated Fair-play Arbitration Triggered
                         target_u["status"] = "Active"
                         st.session_state.player_stats[curr_username]["rating_penalty"] += 5.0
                         st.error(f"🚨 FAIR-PLAY ARBITRATION AUDIT: Block reason deemed invalid/unjustified! @{block_target} was automatically unblocked. A 5-point rating penalty has been applied to Admin @{curr_username}!")
+                    
+                    save_data_to_file()
                     st.rerun()
                     
         with col_b2:
             if st.button("Unblock Target User", key="btn_exec_unblock"):
                 st.session_state.users[block_target]["status"] = "Active"
+                save_data_to_file()
                 st.success(f"User @{block_target} unblocked successfully.")
                 st.rerun()
 
@@ -772,6 +763,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
             att_status = st.radio("Status:", ["Present", "Absent"], key="att_rad")
             if st.button("Save Attendance", key="btn_save_att"):
                 st.session_state.player_stats[att_user]["attendance"] = att_status
+                save_data_to_file()
                 st.success(f"Attendance recorded for @{att_user}!")
                 
         with col_perf:
@@ -782,12 +774,13 @@ elif nav_choice == "⚙️ Admin Control Panel":
             if st.button("Save Performance Stats", key="btn_save_perf"):
                 st.session_state.player_stats[perf_user]["goals"] += add_goals
                 st.session_state.player_stats[perf_user]["assists"] += add_assists
+                save_data_to_file()
                 st.success(f"Performance stats updated for @{perf_user}!")
                 
         st.divider()
         st.markdown("### Defensive Conceded Goals Auto-Deduction Engine")
         conceded_count = st.number_input("Total Match Goals Conceded:", min_value=0, max_value=20, step=1)
-        if st.button("Apply Defensive Concession Deductions", key="btn_apply_conceded"):
+        if st.button("Apply Defensive Concessions Deductions", key="btn_apply_conceded"):
             for u, udata in st.session_state.users.items():
                 pos = udata["position"]
                 if pos == "GK":
@@ -796,6 +789,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
                     st.session_state.player_stats[u]["conceded_penalty"] += (conceded_count * 1.75)
                 else:
                     st.session_state.player_stats[u]["conceded_penalty"] += (conceded_count * 1.5)
+            save_data_to_file()
             st.success(f"Applied conceded goal penalties across defensive positions for {conceded_count} goal(s)!")
 
     with tab_reset:
@@ -808,5 +802,6 @@ elif nav_choice == "⚙️ Admin Control Panel":
                 st.session_state.group_chat = []
                 st.session_state.football_ai_chats = []
                 st.session_state.personal_ai_chats = {}
+                save_data_to_file()
                 st.success("Master Reset completed! All chat logs and AI conversations purged safely.")
                 st.rerun()
