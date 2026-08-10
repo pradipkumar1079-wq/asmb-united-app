@@ -414,18 +414,23 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
     
     if day_selection == "Saturday (Match Squad Generation)":
         st.subheader("Saturday Dynamic Match Squad Generation")
-        target_count = st.session_state.match_settings["asmb_player_count"]
-        st.write(f"Active Selected Player Count Constraint: **{target_count} Players**")
+        
+        # Admin / S.A এর সিলেক্ট করা প্লেয়ার সংখ্যা তুলে আনা হচ্ছে
+        target_count = st.session_state.match_settings.get("asmb_player_count", 11)
+        st.info(f"📋 **Configured Squad Size:** Management selected **{target_count} Players** for this squad.")
         
         if st.button("Generate Match Squad", key="btn_gen_squad"):
             active_players = [u for u, udata in st.session_state.users.items() if udata["status"] == "Active" and u not in st.session_state.injured_players]
+            
+            # রেটিং অনুযায়ী ক্রমানুসারে সাজানো
             sorted_players = sorted(active_players, key=lambda u: compute_player_rating(u), reverse=True)
             
+            # Admin-এর নির্ধারিত সংখ্যা অনুযায়ী মূল দল ও সাবস্টিটিউট ভাগ করা
             starters = sorted_players[:target_count]
             subs = sorted_players[target_count:]
             
-            st.markdown("### 🏆 ASMB United Starting Lineup")
-            squad_notice_text = f"### ⚽ Dynamic Match Squad ({datetime.date.today()})\n\n**Starting Lineup:**\n"
+            st.markdown(f"### 🏆 Starting Lineup ({len(starters)} Players)")
+            squad_notice_text = f"### ⚽ Dynamic Match Squad ({datetime.date.today()})\n\n**Starting Lineup ({len(starters)} Players):**\n"
             
             for idx, p in enumerate(starters, 1):
                 r = compute_player_rating(p)
@@ -435,8 +440,8 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 squad_notice_text += f"{line}\n"
                 
             if subs:
-                st.markdown("### 🔄 Substitutes Bench")
-                squad_notice_text += "\n**Substitutes:**\n"
+                st.markdown(f"### 🔄 Substitutes Bench ({len(subs)} Players)")
+                squad_notice_text += f"\n**Substitutes ({len(subs)} Players):**\n"
                 for idx, p in enumerate(subs, 1):
                     r = compute_player_rating(p)
                     u = st.session_state.users[p]
@@ -452,10 +457,11 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             squad_notice_text += f"\n**Tactical Formation:** {formation}"
             st.success(f"**Tactical Formation Engine:** {formation}")
             
+            # সেভ ডাটা ও অটো নোটিশ বোর্ডে প্রকাশ
             st.session_state.notice_board.append({
                 "id": len(st.session_state.notice_board) + 1,
                 "author": st.session_state.app_settings["app_name"] + " (Football AI)",
-                "title": "Official Match Squad & Formation Announcement",
+                "title": f"Official Match Squad ({target_count}-a-side) Announcement",
                 "content": squad_notice_text,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "type": "Match Announcement"
@@ -492,7 +498,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 for p, r in team_b:
                     u = st.session_state.users[p]
                     st.write(f"• **{u['full_name']}** ({u['position']}) - Rating: **{r}**")
-
+                    
 # ==========================================
 # 9. FEATURE MODULE: TEAMMATE RATINGS & FOULS
 # ==========================================
@@ -670,7 +676,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
             st.rerun()
             
         st.divider()
-        st.subheader("Post Official Announcement")
+        st.subheader("📢 Post Official Announcement")
         notice_title = st.text_input("Notice Title:")
         notice_content = st.text_area("Notice Content:")
         if st.button("Post Announcement", key="btn_post_notice"):
@@ -686,6 +692,29 @@ elif nav_choice == "⚙️ Admin Control Panel":
                 save_data_to_file()
                 st.success("Notice posted successfully!")
                 st.rerun()
+
+        # ---------------------------------------------------------
+        # S.A / ADMIN PLAYER COUNT CONFIGURATION
+        # ---------------------------------------------------------
+        st.divider()
+        st.subheader("⚙️ Match & Practice Squad Settings")
+        
+        current_count = st.session_state.match_settings.get("asmb_player_count", 11)
+        
+        new_player_count = st.number_input(
+            "Select Squad Size (How many players will play in the squad):",
+            min_value=5,
+            max_value=25,
+            value=int(current_count),
+            step=1,
+            key="admin_squad_count_input"
+        )
+        
+        if st.button("Save Squad Size Setting", key="btn_save_squad_count"):
+            st.session_state.match_settings["asmb_player_count"] = new_player_count
+            save_data_to_file()
+            st.success(f"Squad size successfully updated to {new_player_count} players!")
+            st.rerun()
 
     with tab_roles:
         st.subheader("Manage User Positions & Admin Status")
