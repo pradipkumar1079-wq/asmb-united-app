@@ -125,18 +125,48 @@ init_db()
 # ==========================================
 # 1. DYNAMIC CSS & BRANDING OVERRIDES
 # ==========================================
-bg_color = st.session_state.app_settings.get("bg_color", "#0e1117")
+
+def execute_daily_ai_background_script():
+    """প্রতিদিন অটোমেটিকভাবে উজ্জ্বল (Bright) ব্যাকগ্রাউন্ড কালার পরিবর্তন করার AI স্ক্রিপ্ট"""
+    # উজ্জ্বল এবং আই-ক্যাচিং কালার প্যালেট (Bright & Vibrant Colors)
+    bright_colors = [
+        "#00D2FF",  # Bright Electric Blue
+        "#FF5E7E",  # Vibrant Coral Pink
+        "#FFD166",  # Vibrant Warm Yellow
+        "#06D6A0",  # Bright Mint Green
+        "#A29BFE",  # Bright Lavender / Soft Purple
+        "#FF9F43",  # Vibrant Orange
+        "#00CECB"   # Bright Turquoise
+    ]
+    today_index = datetime.datetime.now().day % len(bright_colors)
+    
+    if "custom_bg_set" not in st.session_state:
+        st.session_state.app_settings["bg_color"] = bright_colors[today_index]
+
+# ব্যাকগ্রাউন্ড কালার আপডেট স্ক্রিপ্ট কল
+execute_daily_ai_background_script()
+
+# ডিফল্ট উজ্জ্বল কালার (#00D2FF) এবং সেশন স্টেট থেকে ব্যাকগ্রাউন্ড রিড করা
+bg_color = st.session_state.app_settings.get("bg_color", "#00D2FF")
+
 st.markdown(f"""
     <style>
-    /* Dynamic AI Background Color */
+    /* Dynamic AI Bright Background Color */
     .stApp {{
-        background-color: {bg_color};
+        background-color: {bg_color} !important;
     }}
+    
+    /* উজ্জ্বল ব্যাকগ্রাউন্ডে টেক্সট যেন পরিষ্কার দেখা যায় সেটির অ্যাডজাস্টমেন্ট */
+    .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp span, .stApp label {{
+        color: #000000 !important;
+        font-weight: 600;
+    }}
+
     /* Strict Button Override Rules */
     div.stButton > button {{
         background-color: #000000 !important;
         color: #FFFFFF !important;
-        border: 1px solid #333333 !important;
+        border: 2px solid #000000 !important;
         border-radius: 6px !important;
         font-weight: bold !important;
     }}
@@ -581,7 +611,9 @@ elif nav_choice == "🤖 Football AI (Public)":
     prompt = st.text_input("Ask Football AI regarding tactics, counter-plays, or team advice:", key="f_ai_prompt")
     if st.button("Ask Football AI", key="btn_ask_fai"):
         if prompt.strip():
-            resp = f"Tactical Analysis for '{prompt}': Maintain high pressing intensity, utilize overlap wing play, and restrict space between defensive lines."
+            # বাংলা উত্তর জেনারেট করার লজিক
+            resp = f"'{prompt}' সম্পর্কিত ফুটবল বিশ্লেষণ: ম্যাচে ভালো পারফর্ম করতে হাই-প্রেসিং বজায় রাখুন, উইং দিয়ে ওভারল্যাপ অ্যাটাক বাড়ান এবং ডিফেন্স লাইনের মধ্যে ফাঁকা জায়গা কম রাখুন।"
+            
             st.session_state.football_ai_chats.append({
                 "sender": curr_user["full_name"],
                 "prompt": prompt.strip(),
@@ -612,7 +644,9 @@ elif nav_choice == "👤 Personal AI (Private)":
     p_prompt = st.text_input(f"Chat with {pai_name}:", key="p_ai_prompt")
     if st.button("Send to Personal AI", key="btn_ask_pai"):
         if p_prompt.strip():
-            resp = f"Hello {curr_user['full_name']}! As your personal assistant {pai_name}, I am tracking your ratings and performance metrics closely."
+            # বাংলায়Personal AI এর রেসপন্স
+            resp = f"হ্যালো {curr_user['full_name']}! আমি আপনার ব্যক্তিগত সহকারী {pai_name}। আমি আপনার ম্যাচ পারফরম্যান্স, প্লেয়ার রেটিং এবং ব্যক্তিগত সব ডাটা সতর্কতার সাথে ট্র্যাক করছি।"
+            
             user_p_chats.append({
                 "prompt": p_prompt.strip(),
                 "response": resp,
