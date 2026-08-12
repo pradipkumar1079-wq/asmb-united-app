@@ -730,9 +730,30 @@ elif nav_choice == "⚙️ Admin Control Panel":
                 st.rerun()
 
         # ---------------------------------------------------------
-        # S.A / ADMIN PLAYER COUNT CONFIGURATION
+        # 🗑️ NOTICE MANAGEMENT & DELETE SYSTEM (S.A / ADMIN)
         # ---------------------------------------------------------
         st.divider()
+        st.subheader("🗑️ Manage & Delete Notices")
+        
+        if not st.session_state.notice_board:
+            st.info("No active notices found on the Notice Board.")
+        else:
+            for idx, notice in enumerate(st.session_state.notice_board):
+                col_n_info, col_n_del = st.columns([4, 1])
+                with col_n_info:
+                    st.markdown(f"**[{notice.get('type', 'Notice')}] {notice['title']}** *(By: {notice['author']} at {notice['timestamp']})*")
+                    st.caption(notice['content'][:100] + "..." if len(notice['content']) > 100 else notice['content'])
+                with col_n_del:
+                    if st.button("Delete 🗑️", key=f"btn_del_notice_{idx}"):
+                        st.session_state.notice_board.pop(idx)
+                        save_data_to_file()
+                        st.success(f"Notice '{notice['title']}' deleted successfully!")
+                        st.rerun()
+                st.divider()
+
+        # ---------------------------------------------------------
+        # S.A / ADMIN PLAYER COUNT CONFIGURATION
+        # ---------------------------------------------------------
         st.subheader("⚙️ Match & Practice Squad Settings")
         
         current_count = st.session_state.match_settings.get("asmb_player_count", 11)
