@@ -206,7 +206,7 @@ def compute_player_rating(username):
 def update_star_players():
     for uname, udata in st.session_state.users.items():
         rating = compute_player_rating(uname)
-        if rating > 8.5:
+        if rating > 8.0:
             udata["is_star"] = True
         else:
             udata["is_star"] = False
@@ -268,7 +268,7 @@ def login_register_surface():
         is_first_user = len(st.session_state.users) == 0
         if is_first_user:
             st.info("ℹ️ You are the first registered user. You will automatically be granted Superadmin (S.A) privileges!")
-            reg_position = st.selectbox("Assign Initial Position (Superadmin Exclusive)", ["GK", "CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"])
+            reg_position = st.selectbox("Assign Initial Position (Superadmin Exclusive)", ["GK","CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"])
         else:
             st.warning("🔒 Position field is strictly disabled during registration. An Admin/Superadmin will assign your position post-registration.")
             reg_position = "Unassigned"
@@ -411,7 +411,7 @@ elif nav_choice == "👥 Player Directory & Roster":
         st.dataframe(pd.DataFrame(dir_data), use_container_width=True)
 
     with tab_star:
-        st.subheader("⭐ Designated Star Players (> 8.5 Total Rating)")
+        st.subheader("⭐ Designated Star Players (> 8.0 Total Rating)")
         star_players = [u for u, udata in st.session_state.users.items() if udata.get("is_star")]
         if not star_players:
             st.info("No star players designated at this moment.")
@@ -521,12 +521,12 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown(f"### 🔵 Team Alpha (Aggregate Rating: {round(rate_a, 2)})")
+                st.markdown(f"### 🛡️⚡ Iron Strike (Aggregate Rating: {round(rate_a, 2)})")
                 for p, r in team_a:
                     u = st.session_state.users[p]
                     st.write(f"• **{u['full_name']}** ({u['position']}) - Rating: **{r}**")
             with col2:
-                st.markdown(f"### 🔴 Team Beta (Aggregate Rating: {round(rate_b, 2)})")
+                st.markdown(f"### 🛡️🔥 Titan Shield (Aggregate Rating: {round(rate_b, 2)})")
                 for p, r in team_b:
                     u = st.session_state.users[p]
                     st.write(f"• **{u['full_name']}** ({u['position']}) - Rating: **{r}**")
