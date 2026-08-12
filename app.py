@@ -206,7 +206,7 @@ def compute_player_rating(username):
 def update_star_players():
     for uname, udata in st.session_state.users.items():
         rating = compute_player_rating(uname)
-        if rating > 8.0:
+        if rating > 7.5:
             udata["is_star"] = True
         else:
             udata["is_star"] = False
@@ -411,7 +411,7 @@ elif nav_choice == "👥 Player Directory & Roster":
         st.dataframe(pd.DataFrame(dir_data), use_container_width=True)
 
     with tab_star:
-        st.subheader("⭐ Designated Star Players (> 8.0 Total Rating)")
+        st.subheader("⭐ Designated Star Players (> 7.5 Total Rating)")
         star_players = [u for u, udata in st.session_state.users.items() if udata.get("is_star")]
         if not star_players:
             st.info("No star players designated at this moment.")
