@@ -156,24 +156,26 @@ st.markdown(f"""
         background-color: {bg_color} !important;
     }}
     
-    /* উজ্জ্বল ব্যাকগ্রাউন্ডে টেক্সট যেন পরিষ্কার দেখা যায় সেটির অ্যাডজাস্টমেন্ট */
+    /* উজ্জ্বল ব্যাকগ্রাউন্ডে টেক্সট যেন পরিষ্কার দেখা যায় সেটির অ্যাডজাস্টমেন্ট */
     .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp span, .stApp label {{
         color: #000000 !important;
         font-weight: 600;
     }}
 
-    /* Strict Button Override Rules */
+    /* Strict Button Override Rules (Black Background & White Text) */
     div.stButton > button {{
-        background-color: #000000 !important;
-        color: #FFFFFF !important;
+        background-color: #000000 !important; /* Button Color: Black */
+        color: #FFFFFF !important;            /* Button Text Color: White */
         border: 2px solid #000000 !important;
         border-radius: 6px !important;
         font-weight: bold !important;
     }}
+    
+    /* Button Hover Style */
     div.stButton > button:hover {{
-        background-color: #222222 !important;
-        color: #00FFCC !important;
-        border-color: #00FFCC !important;
+        background-color: #222222 !important; /* Slightly Lighter Black on Hover */
+        color: #FFFFFF !important;            /* Keep Text White on Hover */
+        border-color: #000000 !important;
     }}
     </style>
 """, unsafe_allow_html=True)
