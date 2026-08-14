@@ -682,11 +682,23 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
     elif day_sel == "Practice Day Split (Mon-Thu)":
         st.subheader("🏃 Practice Match Balanced Team Generator")
         
+        # Ensure active_users is fetched
+        active_users = get_active_unblocked_users()
+        
         if curr_user["role"] in ["Superadmin", "Admin"]:
-            practice_formation = st.text_input("📐 Practice Tactical Formation (e.g., 3-2-1, 2-3-1):", value="Balanced Practice Formation")
+            practice_formation = st.text_input(
+                "📐 Practice Tactical Formation (e.g., 3-2-1, 2-3-1):", 
+                value="Balanced Practice Formation",
+                key="input_practice_fmt"
+            )
             
-            if st.button("Generate Balanced Teams", key="btn_gen_practice"):
-                available = [u for u in active_users.keys() if u not in st.session_state.injured_players and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"]
+            if st.button("Generate & Publish Balanced Teams", key="btn_gen_practice"):
+                # Filter available players (not injured & not absent)
+                available = [
+                    u for u in active_users.keys() 
+                    if u not in st.session_state.injured_players 
+                    and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"
+                ]
                 
                 if len(available) < 2:
                     st.error("Need at least 2 active players to generate practice teams.")
@@ -716,26 +728,15 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     avg_tp = round(sum(tp_ratings) / len(tp_ratings), 2) if tp_ratings else 0.0
                     avg_el = round(sum(el_ratings) / len(el_ratings), 2) if el_ratings else 0.0
                     
-                    col_t1, col_t2 = st.columns(2)
+                    # Save generated teams temporarily in session_state for display
+                    st.session_state["last_practice_teams"] = {
+                        "team_tp": team_tp,
+                        "team_el": team_el,
+                        "avg_tp": avg_tp,
+                        "avg_el": avg_el,
+                        "formation": practice_formation
+                    }
                     
-                    # Team TP Output
-                    with col_t1:
-                        st.markdown(f"### 🐯 🐅 Tigers & Panthers ({len(team_tp)} Players)")
-                        st.caption(f"Average Team Rating: **{avg_tp}**")
-                        for idx, p in enumerate(team_tp, 1):
-                            u = active_users[p]
-                            r = compute_player_rating(p)
-                            st.markdown(f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**")
-                            
-                    # Team EL Output
-                    with col_t2:
-                        st.markdown(f"### 🦅 🦁 Eagles & Lions ({len(team_el)} Players)")
-                        st.caption(f"Average Team Rating: **{avg_el}**")
-                        for idx, p in enumerate(team_el, 1):
-                            u = active_users[p]
-                            r = compute_player_rating(p)
-                            st.markdown(f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**")
-                            
                     # Prepare Notice Text for Practice Match
                     notice_text = f"### 🏃 Practice Match Teams - {datetime.date.today()}\n"
                     notice_text += f"**Formation:** {practice_formation}\n\n"
@@ -743,13 +744,14 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     notice_text += f"**🐯 🐅 Tigers & Panthers (Avg Rating: {avg_tp}):**\n"
                     for idx, p in enumerate(team_tp, 1):
                         u = active_users[p]
-                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u['position']} ({compute_player_rating(p)})\n"
+                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u.get('position', 'N/A')} ({compute_player_rating(p)})\n"
                         
                     notice_text += f"\n**🦅 🦁 Eagles & Lions (Avg Rating: {avg_el}):**\n"
                     for idx, p in enumerate(team_el, 1):
                         u = active_users[p]
-                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u['position']} ({compute_player_rating(p)})\n"
-                        
+                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u.get('position', 'N/A')} ({compute_player_rating(p)})\n"
+                    
+                    # Add to Notice Board
                     st.session_state.notice_board.append({
                         "id": len(st.session_state.notice_board) + 1,
                         "author": "Football AI",
@@ -758,10 +760,36 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                         "comments": []
                     })
+                    
                     save_data_to_file()
-                    st.success("Balanced practice teams published to Notice Board!")
+                    st.success("✅ Balanced practice teams generated & published to Notice Board!")
+                    st.rerun()
+
+            # Output UI - Displays existing generated team from session state
+            if "last_practice_teams" in st.session_state:
+                p_data = st.session_state["last_practice_teams"]
+                col_t1, col_t2 = st.columns(2)
+                
+                # Team TP Output
+                with col_t1:
+                    st.markdown(f"### 🐯 🐅 Tigers & Panthers ({len(p_data['team_tp'])} Players)")
+                    st.caption(f"Average Team Rating: **{p_data['avg_tp']}**")
+                    for idx, p in enumerate(p_data['team_tp'], 1):
+                        u = active_users.get(p, {})
+                        r = compute_player_rating(p)
+                        st.markdown(f"{idx}. **{u.get('full_name', p)}** (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**")
+                        
+                # Team EL Output
+                with col_t2:
+                    st.markdown(f"### 🦅 🦁 Eagles & Lions ({len(p_data['team_el'])} Players)")
+                    st.caption(f"Average Team Rating: **{p_data['avg_el']}**")
+                    for idx, p in enumerate(p_data['team_el'], 1):
+                        u = active_users.get(p, {})
+                        r = compute_player_rating(p)
+                        st.markdown(f"{idx}. **{u.get('full_name', p)}** (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**")
+
         else:
-            st.info("Practice teams can only be generated by Superadmin/Admin.")
+            st.info("ℹ️ Practice teams can only be generated by Superadmin/Admin.")
             
 # ==========================================
 # 10. RATINGS & RATING GUIDE
