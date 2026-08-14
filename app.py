@@ -441,7 +441,6 @@ if curr_user["status"] == "Blocked":
 else:
     options = [
         "📌 Notice Board & News",
-        "📋 Daily Attendance",
         "👥 Player Directory & Roster",
         "🖼️ Member Photo Gallery",
         "⚽ Squad Generation & Tactics",
@@ -518,107 +517,6 @@ if nav_choice == "📌 Notice Board & News":
                         })
                         save_data_to_file()
                         st.rerun()
-
-# ==========================================
-# 📋 DAILY ATTENDANCE SHEET (ADMIN & S.A INPUT)
-# ==========================================
-elif nav_choice == "📋 Daily Attendance":
-    st.header("📋 Daily Player Attendance Sheet")
-    st.caption(f"📅 Today's Date: **{datetime.date.today().strftime('%B %d, %Y')}**")
-    
-    active_users = get_active_unblocked_users()
-    
-    if not active_users:
-        st.info("No active players available in the system.")
-    else:
-        # -------------------------------------------------------------
-        # 🟢 SUPERADMIN & ADMIN EDIT MODE
-        # -------------------------------------------------------------
-        if curr_user.get("role") in ["Superadmin", "Admin"]:
-            st.markdown("### ⚙️ Mark Attendance for All Players")
-            st.caption("Select attendance status for each player and click save.")
-            
-            with st.form("admin_attendance_form"):
-                updated_attendance = {}
-                
-                # Header layout
-                h_col1, h_col2, h_col3 = st.columns([3, 2, 4])
-                with h_col1:
-                    st.markdown("**Player Name**")
-                with h_col2:
-                    st.markdown("**Position**")
-                with h_col3:
-                    st.markdown("**Attendance Status**")
-                
-                st.divider()
-                
-                # Player list with radio buttons
-                for username, user_info in active_users.items():
-                    col1, col2, col3 = st.columns([3, 2, 4])
-                    
-                    with col1:
-                        st.markdown(f"**{user_info['full_name']}** (`@{username}`)")
-                    with col2:
-                        st.markdown(f"`{user_info.get('position', 'N/A')}`")
-                    with col3:
-                        # Get existing status or default to "Present"
-                        current_status = st.session_state.player_stats.get(username, {}).get("attendance", "Present")
-                        status_options = ["Present", "Absent", "Late", "Injured"]
-                        default_idx = status_options.index(current_status) if current_status in status_options else 0
-                        
-                        selected_status = st.radio(
-                            f"Status_{username}",
-                            options=status_options,
-                            index=default_idx,
-                            key=f"att_radio_{username}",
-                            horizontal=True,
-                            label_visibility="collapsed"
-                        )
-                        updated_attendance[username] = selected_status
-                
-                st.markdown("---")
-                submit_att = st.form_submit_button("💾 Save & Publish Attendance", type="primary")
-                
-                if submit_att:
-                    for username, status in updated_attendance.items():
-                        if username not in st.session_state.player_stats:
-                            st.session_state.player_stats[username] = {}
-                        st.session_state.player_stats[username]["attendance"] = status
-                        
-                        # Injured থাকলে ইঞ্জার্ড লিস্টে আপডেট করার অটো-লজিক
-                        if status == "Injured":
-                            if username not in st.session_state.injured_players:
-                                st.session_state.injured_players.append(username)
-                        else:
-                            if username in st.session_state.injured_players:
-                                st.session_state.injured_players.remove(username)
-                    
-                    save_data_to_file()
-                    st.success("✅ Attendance updated successfully for all players!")
-                    st.rerun()
-
-        # -------------------------------------------------------------
-        # 🔵 GENERAL PLAYER VIEW MODE (READ ONLY)
-        # -------------------------------------------------------------
-        else:
-            st.info("🔒 Read-Only Mode: Only Superadmin and Admins can modify attendance.")
-            st.markdown("### 📊 Today's Player Status")
-            
-            att_summary = []
-            for username, user_info in active_users.items():
-                status = st.session_state.player_stats.get(username, {}).get("attendance", "Present")
-                
-                # Status formatting with emojis
-                status_icon = "✅ Present" if status == "Present" else ("❌ Absent" if status == "Absent" else ("⏰ Late" if status == "Late" else "🏥 Injured"))
-                
-                att_summary.append({
-                    "Player Name": user_info['full_name'],
-                    "Username": f"@{username}",
-                    "Position": user_info.get('position', 'N/A'),
-                    "Status": status_icon
-                })
-            
-            st.table(att_summary)
             
 # ==========================================
 # 7. PLAYER DIRECTORY & SPECIAL ROSTERS
@@ -1061,7 +959,14 @@ elif nav_choice == "⚙️ Admin Control Panel":
         st.error("Access Denied.")
         st.stop()
         
-    t1, t2, t3, t4, t5 = st.tabs(["🎨 Branding & Limit", "👑 Roles & Password", "🚫 Block System", "📊 Match Stats & GK Saves", "🧹 Master Reset"])
+    t1, t2, t3, t4, t5, t6 = st.tabs([
+        "🎨 Branding & Limit", 
+        "👑 Roles & Password", 
+        "🚫 Block System", 
+        "📊 Match Stats & GK Saves", 
+        "📋 Player Attendance", 
+        "🧹 Master Reset"
+    ])
     
     with t1:
         st.session_state.app_settings["app_name"] = st.text_input("App Name:", st.session_state.app_settings["app_name"])
@@ -1134,7 +1039,78 @@ elif nav_choice == "⚙️ Admin Control Panel":
             save_data_to_file()
             st.success("Stats updated!")
 
+    # -------------------------------------------------------------
+    # 📋 TAB 5: PLAYER ATTENDANCE MANAGEMENT
+    # -------------------------------------------------------------
     with t5:
+        st.subheader("📋 Daily Player Attendance Sheet")
+        st.caption(f"📅 Date: **{datetime.date.today().strftime('%B %d, %Y')}**")
+        
+        active_users = get_active_unblocked_users()
+        
+        if not active_users:
+            st.info("No active players available.")
+        else:
+            with st.form("admin_tab_attendance_form"):
+                updated_attendance = {}
+                
+                # Table Header
+                h_c1, h_c2, h_c3 = st.columns([3, 2, 4])
+                with h_c1:
+                    st.markdown("**Player Name**")
+                with h_c2:
+                    st.markdown("**Position**")
+                with h_c3:
+                    st.markdown("**Attendance Status**")
+                
+                st.divider()
+                
+                # Player Rows
+                for username, user_info in active_users.items():
+                    col1, col2, col3 = st.columns([3, 2, 4])
+                    
+                    with col1:
+                        st.markdown(f"**{user_info['full_name']}** (`@{username}`)")
+                    with col2:
+                        st.markdown(f"`{user_info.get('position', 'N/A')}`")
+                    with col3:
+                        current_status = st.session_state.player_stats.get(username, {}).get("attendance", "Present")
+                        status_options = ["Present", "Absent", "Late", "Injured"]
+                        default_idx = status_options.index(current_status) if current_status in status_options else 0
+                        
+                        selected_status = st.radio(
+                            f"Att_{username}",
+                            options=status_options,
+                            index=default_idx,
+                            key=f"tab_att_radio_{username}",
+                            horizontal=True,
+                            label_visibility="collapsed"
+                        )
+                        updated_attendance[username] = selected_status
+                
+                st.markdown("---")
+                if st.form_submit_button("💾 Save Attendance Sheet", type="primary"):
+                    for username, status in updated_attendance.items():
+                        if username not in st.session_state.player_stats:
+                            st.session_state.player_stats[username] = {}
+                        st.session_state.player_stats[username]["attendance"] = status
+                        
+                        # Auto-update Injured players list
+                        if status == "Injured":
+                            if username not in st.session_state.injured_players:
+                                st.session_state.injured_players.append(username)
+                        else:
+                            if username in st.session_state.injured_players:
+                                st.session_state.injured_players.remove(username)
+                    
+                    save_data_to_file()
+                    st.success("✅ Attendance updated successfully!")
+                    st.rerun()
+
+    # -------------------------------------------------------------
+    # 🧹 TAB 6: MASTER RESET
+    # -------------------------------------------------------------
+    with t6:
         if curr_user["role"] == "Superadmin":
             if st.button("🔥 EXECUTE MASTER RESET", key="btn_mr"):
                 st.session_state.group_chat = []
