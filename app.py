@@ -694,44 +694,44 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     # Sort players by rating descending
                     sorted_players = sorted(available, key=lambda x: compute_player_rating(x), reverse=True)
                     
-                    team_alpha = []
-                    team_beta = []
+                    team_tp = []
+                    team_el = []
                     
                     # Snake Draft Allocation Logic for Rating Balance (1->A, 2->B, 3->B, 4->A, 5->A, 6->B...)
                     for idx, p in enumerate(sorted_players):
                         if (idx // 2) % 2 == 0:
                             if idx % 2 == 0:
-                                team_alpha.append(p)
+                                team_tp.append(p)
                             else:
-                                team_beta.append(p)
+                                team_el.append(p)
                         else:
                             if idx % 2 == 0:
-                                team_beta.append(p)
+                                team_el.append(p)
                             else:
-                                team_alpha.append(p)
+                                team_tp.append(p)
                                 
-                    alpha_ratings = [compute_player_rating(p) for p in team_alpha]
-                    beta_ratings = [compute_player_rating(p) for p in team_beta]
+                    tp_ratings = [compute_player_rating(p) for p in team_tp]
+                    el_ratings = [compute_player_rating(p) for p in team_el]
                     
-                    avg_alpha = round(sum(alpha_ratings) / len(alpha_ratings), 2) if alpha_ratings else 0.0
-                    avg_beta = round(sum(beta_ratings) / len(beta_ratings), 2) if beta_ratings else 0.0
+                    avg_tp = round(sum(tp_ratings) / len(tp_ratings), 2) if tp_ratings else 0.0
+                    avg_el = round(sum(el_ratings) / len(el_ratings), 2) if el_ratings else 0.0
                     
                     col_t1, col_t2 = st.columns(2)
                     
-                    # Team Alpha Output
+                    # Team TP Output
                     with col_t1:
-                        st.markdown(f"### 🐯 🐅 Tigers & Panthers ({len(team_alpha)} Players)")
-                        st.caption(f"Average Team Rating: **{avg_alpha}**")
-                        for idx, p in enumerate(team_alpha, 1):
+                        st.markdown(f"### 🐯 🐅 Tigers & Panthers ({len(team_tp)} Players)")
+                        st.caption(f"Average Team Rating: **{avg_tp}**")
+                        for idx, p in enumerate(team_tp, 1):
                             u = active_users[p]
                             r = compute_player_rating(p)
                             st.markdown(f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**")
                             
-                    # Team Beta Output
+                    # Team EL Output
                     with col_t2:
-                        st.markdown(f"### 🦅 🦁 Eagles & Lions ({len(team_beta)} Players)")
-                        st.caption(f"Average Team Rating: **{avg_beta}**")
-                        for idx, p in enumerate(team_beta, 1):
+                        st.markdown(f"### 🦅 🦁 Eagles & Lions ({len(team_el)} Players)")
+                        st.caption(f"Average Team Rating: **{avg_el}**")
+                        for idx, p in enumerate(team_el, 1):
                             u = active_users[p]
                             r = compute_player_rating(p)
                             st.markdown(f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**")
@@ -740,13 +740,13 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     notice_text = f"### 🏃 Practice Match Teams - {datetime.date.today()}\n"
                     notice_text += f"**Formation:** {practice_formation}\n\n"
                     
-                    notice_text += f"**🔵 Team Alpha (Avg Rating: {avg_alpha}):**\n"
-                    for idx, p in enumerate(team_alpha, 1):
+                    notice_text += f"**🐯 🐅 Tigers & Panthers (Avg Rating: {avg_tp}):**\n"
+                    for idx, p in enumerate(team_tp, 1):
                         u = active_users[p]
                         notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u['position']} ({compute_player_rating(p)})\n"
                         
-                    notice_text += f"\n**🔴 Team Beta (Avg Rating: {avg_beta}):**\n"
-                    for idx, p in enumerate(team_beta, 1):
+                    notice_text += f"\n**🦅 🦁 Eagles & Lions (Avg Rating: {avg_el}):**\n"
+                    for idx, p in enumerate(team_el, 1):
                         u = active_users[p]
                         notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u['position']} ({compute_player_rating(p)})\n"
                         
