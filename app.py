@@ -16,7 +16,6 @@ import base64
 DB_FILE = "asmb_football_club_data.json"
 
 def load_data_from_file():
-    """ফাইল থেকে স্থায়ীভাবে সংরক্ষিত ডাটা অ্যাপে নিয়ে আসে"""
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -26,7 +25,6 @@ def load_data_from_file():
     return None
 
 def save_data_to_file():
-    """ডাটা ফাইলে সুরক্ষিত করে সেভ করে"""
     data_to_save = {
         "app_settings": st.session_state.app_settings,
         "users": st.session_state.users,
@@ -124,12 +122,10 @@ init_db()
 # 1. DYNAMIC COLOR ENGINE & CSS INJECTION
 # ==========================================
 def get_daily_theme_colors():
-    """দৈনিক ভিত্তিতে উজ্জ্বল ব্যাকগ্রাউন্ড এবং বিপরীত টেক্সট কালার তৈরি করে"""
     bright_bg_colors = ["#FFD166", "#06D6A0", "#118AB2", "#FF70A6", "#FF9F1C", "#70D6FF", "#E76F51"]
     day_idx = datetime.datetime.now().day % len(bright_bg_colors)
     bg = bright_bg_colors[day_idx]
     
-    # ব্যাকগ্রাউন্ড উজ্জ্বল হলে টেক্সট গাঢ়/বিপরীত হবে
     text_colors = ["#000000", "#1A0033", "#002966", "#4A001F", "#330000", "#001A33", "#220000"]
     txt = text_colors[day_idx]
     
@@ -224,7 +220,7 @@ def update_star_players():
             continue
             
         rating = compute_player_rating(uname)
-        if rating > 8.5 or (top_motm_player and uname == top_motm_player):
+        if rating >= 8.5 or (top_motm_player and uname == top_motm_player):
             udata["is_star"] = True
         else:
             udata["is_star"] = False
@@ -489,6 +485,18 @@ if nav_choice == "📌 Notice Board & News":
             with st.expander(f"📢 {notice['title']} - {notice['timestamp']} (By: {notice['author']})", expanded=(idx==0)):
                 st.markdown(notice['content'])
                 
+                # 🗑️ Superadmin / Admin Delete Button Section
+                if curr_user.get("role") in ["Superadmin", "Admin"]:
+                    st.markdown("---")
+                    if st.button("🗑️ Delete This Notice", key=f"del_notice_{notice['id']}", type="secondary"):
+                        # Remove notice from session state
+                        st.session_state.notice_board = [
+                            n for n in st.session_state.notice_board if n["id"] != notice["id"]
+                        ]
+                        save_data_to_file()
+                        st.success("Notice deleted successfully!")
+                        st.rerun()
+                
                 st.markdown("---")
                 st.markdown("##### 💬 Comments")
                 comments = notice.get("comments", [])
@@ -579,12 +587,31 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
     
     day_sel = st.selectbox("Operation Mode", ["Saturday Match Squad", "Practice Day Split (Mon-Thu)"])
     
+    active_users = get_active_unblocked_users()
+    max_avail = len(active_users)
+    
+    # ---------------------------------------------------------
+    # MODE 1: SATURDAY MATCH SQUAD
+    # ---------------------------------------------------------
     if day_sel == "Saturday Match Squad":
-        target_count = st.session_state.match_settings.get("asmb_player_count", 11)
-        st.info(f"Target Squad Size: **{target_count} Players**")
+        if curr_user["role"] in ["Superadmin", "Admin"]:
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                target_count = st.number_input(
+                    "🔢 Select Squad Size (Starters):", 
+                    min_value=1, 
+                    max_value=max_avail if max_avail > 0 else 11, 
+                    value=min(11, max_avail if max_avail > 0 else 11),
+                    step=1
+                )
+            with col_s2:
+                custom_formation = st.text_input("📐 Enter Team Formation (e.g., 4-3-3, 3-2-1):", value="4-3-3")
+        else:
+            target_count = st.session_state.match_settings.get("asmb_player_count", 11)
+            custom_formation = "Adaptive Formation"
+            st.info(f"Target Squad Size: **{target_count} Players**")
         
         if curr_user["role"] in ["Superadmin", "Admin"] and st.button("Generate Match Squad", key="btn_gen_sq"):
-            active_users = get_active_unblocked_users()
             available = [u for u in active_users.keys() if u not in st.session_state.injured_players and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"]
             
             # Rule: Positional Conflict Filter (Same position highest rated player gets priority)
@@ -630,7 +657,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     st.markdown(line)
                     notice_text += f"{line}\n"
                     
-            formation = f"Adaptive Tactical Formation ({len(starters)}-a-side)"
+            formation = f"{custom_formation} ({len(starters)}-a-side)"
             notice_text += f"\n**Formation:** {formation}"
             
             st.session_state.notice_board.append({
@@ -641,9 +668,98 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "comments": []
             })
+            
+            st.session_state.match_settings["asmb_player_count"] = target_count
             save_data_to_file()
-            st.success("Squad published to Notice Board!")
+            st.success(f"{target_count}-a-side Squad published to Notice Board!")
 
+    # ---------------------------------------------------------
+    # MODE 2: PRACTICE DAY SPLIT (TWO BALANCED TEAMS)
+    # ---------------------------------------------------------
+    elif day_sel == "Practice Day Split (Mon-Thu)":
+        st.subheader("🏃 Practice Match Balanced Team Generator")
+        
+        if curr_user["role"] in ["Superadmin", "Admin"]:
+            practice_formation = st.text_input("📐 Practice Tactical Formation (e.g., 3-2-1, 2-3-1):", value="Balanced Practice Formation")
+            
+            if st.button("Generate Balanced Teams", key="btn_gen_practice"):
+                available = [u for u in active_users.keys() if u not in st.session_state.injured_players and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"]
+                
+                if len(available) < 2:
+                    st.error("Need at least 2 active players to generate practice teams.")
+                else:
+                    # Sort players by rating descending
+                    sorted_players = sorted(available, key=lambda x: compute_player_rating(x), reverse=True)
+                    
+                    team_alpha = []
+                    team_beta = []
+                    
+                    # Snake Draft Allocation Logic for Rating Balance (1->A, 2->B, 3->B, 4->A, 5->A, 6->B...)
+                    for idx, p in enumerate(sorted_players):
+                        if (idx // 2) % 2 == 0:
+                            if idx % 2 == 0:
+                                team_alpha.append(p)
+                            else:
+                                team_beta.append(p)
+                        else:
+                            if idx % 2 == 0:
+                                team_beta.append(p)
+                            else:
+                                team_alpha.append(p)
+                                
+                    alpha_ratings = [compute_player_rating(p) for p in team_alpha]
+                    beta_ratings = [compute_player_rating(p) for p in team_beta]
+                    
+                    avg_alpha = round(sum(alpha_ratings) / len(alpha_ratings), 2) if alpha_ratings else 0.0
+                    avg_beta = round(sum(beta_ratings) / len(beta_ratings), 2) if beta_ratings else 0.0
+                    
+                    col_t1, col_t2 = st.columns(2)
+                    
+                    # Team Alpha Output
+                    with col_t1:
+                        st.markdown(f"### 🐯 🐅 Tigers & Panthers ({len(team_alpha)} Players)")
+                        st.caption(f"Average Team Rating: **{avg_alpha}**")
+                        for idx, p in enumerate(team_alpha, 1):
+                            u = active_users[p]
+                            r = compute_player_rating(p)
+                            st.markdown(f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**")
+                            
+                    # Team Beta Output
+                    with col_t2:
+                        st.markdown(f"### 🦅 🦁 Eagles & Lions ({len(team_beta)} Players)")
+                        st.caption(f"Average Team Rating: **{avg_beta}**")
+                        for idx, p in enumerate(team_beta, 1):
+                            u = active_users[p]
+                            r = compute_player_rating(p)
+                            st.markdown(f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**")
+                            
+                    # Prepare Notice Text for Practice Match
+                    notice_text = f"### 🏃 Practice Match Teams - {datetime.date.today()}\n"
+                    notice_text += f"**Formation:** {practice_formation}\n\n"
+                    
+                    notice_text += f"**🔵 Team Alpha (Avg Rating: {avg_alpha}):**\n"
+                    for idx, p in enumerate(team_alpha, 1):
+                        u = active_users[p]
+                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u['position']} ({compute_player_rating(p)})\n"
+                        
+                    notice_text += f"\n**🔴 Team Beta (Avg Rating: {avg_beta}):**\n"
+                    for idx, p in enumerate(team_beta, 1):
+                        u = active_users[p]
+                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u['position']} ({compute_player_rating(p)})\n"
+                        
+                    st.session_state.notice_board.append({
+                        "id": len(st.session_state.notice_board) + 1,
+                        "author": "Football AI",
+                        "title": f"Practice Match Split ({len(available)} Players)",
+                        "content": notice_text,
+                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "comments": []
+                    })
+                    save_data_to_file()
+                    st.success("Balanced practice teams published to Notice Board!")
+        else:
+            st.info("Practice teams can only be generated by Superadmin/Admin.")
+            
 # ==========================================
 # 10. RATINGS & RATING GUIDE
 # ==========================================
