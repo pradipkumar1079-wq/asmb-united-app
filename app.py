@@ -441,6 +441,7 @@ if curr_user["status"] == "Blocked":
 else:
     options = [
         "📌 Notice Board & News",
+        "📋 Daily Attendance",
         "👥 Player Directory & Roster",
         "🖼️ Member Photo Gallery",
         "⚽ Squad Generation & Tactics",
@@ -518,6 +519,107 @@ if nav_choice == "📌 Notice Board & News":
                         save_data_to_file()
                         st.rerun()
 
+# ==========================================
+# 📋 DAILY ATTENDANCE SHEET (ADMIN & S.A INPUT)
+# ==========================================
+elif nav_choice == "📋 Daily Attendance":
+    st.header("📋 Daily Player Attendance Sheet")
+    st.caption(f"📅 Today's Date: **{datetime.date.today().strftime('%B %d, %Y')}**")
+    
+    active_users = get_active_unblocked_users()
+    
+    if not active_users:
+        st.info("No active players available in the system.")
+    else:
+        # -------------------------------------------------------------
+        # 🟢 SUPERADMIN & ADMIN EDIT MODE
+        # -------------------------------------------------------------
+        if curr_user.get("role") in ["Superadmin", "Admin"]:
+            st.markdown("### ⚙️ Mark Attendance for All Players")
+            st.caption("Select attendance status for each player and click save.")
+            
+            with st.form("admin_attendance_form"):
+                updated_attendance = {}
+                
+                # Header layout
+                h_col1, h_col2, h_col3 = st.columns([3, 2, 4])
+                with h_col1:
+                    st.markdown("**Player Name**")
+                with h_col2:
+                    st.markdown("**Position**")
+                with h_col3:
+                    st.markdown("**Attendance Status**")
+                
+                st.divider()
+                
+                # Player list with radio buttons
+                for username, user_info in active_users.items():
+                    col1, col2, col3 = st.columns([3, 2, 4])
+                    
+                    with col1:
+                        st.markdown(f"**{user_info['full_name']}** (`@{username}`)")
+                    with col2:
+                        st.markdown(f"`{user_info.get('position', 'N/A')}`")
+                    with col3:
+                        # Get existing status or default to "Present"
+                        current_status = st.session_state.player_stats.get(username, {}).get("attendance", "Present")
+                        status_options = ["Present", "Absent", "Late", "Injured"]
+                        default_idx = status_options.index(current_status) if current_status in status_options else 0
+                        
+                        selected_status = st.radio(
+                            f"Status_{username}",
+                            options=status_options,
+                            index=default_idx,
+                            key=f"att_radio_{username}",
+                            horizontal=True,
+                            label_visibility="collapsed"
+                        )
+                        updated_attendance[username] = selected_status
+                
+                st.markdown("---")
+                submit_att = st.form_submit_button("💾 Save & Publish Attendance", type="primary")
+                
+                if submit_att:
+                    for username, status in updated_attendance.items():
+                        if username not in st.session_state.player_stats:
+                            st.session_state.player_stats[username] = {}
+                        st.session_state.player_stats[username]["attendance"] = status
+                        
+                        # Injured থাকলে ইঞ্জার্ড লিস্টে আপডেট করার অটো-লজিক
+                        if status == "Injured":
+                            if username not in st.session_state.injured_players:
+                                st.session_state.injured_players.append(username)
+                        else:
+                            if username in st.session_state.injured_players:
+                                st.session_state.injured_players.remove(username)
+                    
+                    save_data_to_file()
+                    st.success("✅ Attendance updated successfully for all players!")
+                    st.rerun()
+
+        # -------------------------------------------------------------
+        # 🔵 GENERAL PLAYER VIEW MODE (READ ONLY)
+        # -------------------------------------------------------------
+        else:
+            st.info("🔒 Read-Only Mode: Only Superadmin and Admins can modify attendance.")
+            st.markdown("### 📊 Today's Player Status")
+            
+            att_summary = []
+            for username, user_info in active_users.items():
+                status = st.session_state.player_stats.get(username, {}).get("attendance", "Present")
+                
+                # Status formatting with emojis
+                status_icon = "✅ Present" if status == "Present" else ("❌ Absent" if status == "Absent" else ("⏰ Late" if status == "Late" else "🏥 Injured"))
+                
+                att_summary.append({
+                    "Player Name": user_info['full_name'],
+                    "Username": f"@{username}",
+                    "Position": user_info.get('position', 'N/A'),
+                    "Status": status_icon
+                })
+            
+            st.table(att_summary)
+            
 # ==========================================
 # 7. PLAYER DIRECTORY & SPECIAL ROSTERS
 # ==========================================
@@ -770,19 +872,46 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
     st.header("⭐ Rate Teammates & Performance Guide")
     
     with st.expander("📘 Rating Guide Panel (Click to expand)"):
-        st.markdown("""
-        * **10.0:** রূপকথাতুল্য বা সর্বকালের সেরা পারফরম্যান্স (যেমন: হ্যাটট্রিক + একাধিক অ্যাসিস্ট)। Foul = ম্যাচের সবচেয়ে বেশি বা ক্ষতিকর ফাউলকারী (বিপজ্জনক ফাউল + লাল কার্ড + পেনাল্টি দেওয়া)। {GK : অবিশ্বসনীয় বা ম্যাচজেতানো সেভ (যেমন: শেষ মুহূর্তে পেনাল্টি সেভ বা ৪+ নিশ্চিত গোল বাঁচানো)}
-        * **9.0 - 9.9:** ম্যাচের একক নায়ক এবং ম্যাচজেতানো অসাধারণ নৈপুণ্য। Foul = চরম সহিংস বা উগ্র আচরণ করে ফাউল এবং সরাসরি লাল কার্ড খেয়েছে। {GK : একের পর এক দুর্দান্ত সেভ করে দলকে একাই জয় এনে দেওয়া।}
-        * **8.0 - 8.9:** চমৎকার খেলা, যার মধ্যে গুরুত্বপূর্ণ গোল বা অ্যাসিস্ট রয়েছে। Foul = বিপজ্জনক বা খারাপ ট্যাকল করে সরাসরি লাল কার্ড পেয়ে মাঠ ছেড়েছে। {GK : অন্তত ৩-৪টি নিশ্চিত গোলের সেভ এবং ক্লািন শিট (Clean Sheet) বজায় রাখা।}
-        * **7.0 - 7.9:** নির্ভরযোগ্য ও ভালো পারফরম্যান্স, কোনো বড় ভুল ছাড়া। Foul = ক্রমাগত বা ফাউলের ওপর ফাউল করে দলকে ঝুঁকিতে ফেলেছে। {GK : নির্ভরযোগ্য পারফরম্যান্স, সাধারণ সেভগুলো ঠিকঠাক করা এবং বড় কোনো ভুল না করা।}
-        * **6.0 - 6.9:** সাধারণ বা গড়পড়তা পারফরম্যান্স (ম্যাচ শুরুর সাধারণ বেস পয়েন্ট)। Foul = ম্যাচে ২টি আলাদা ফাউলের কারণে ১টি হলুদ কার্ড পেয়েছে। {GK : গড়পড়তা খেলা (ম্যাচ শুরুর বেস পয়েন্ট), যেখানে গোলরক্ষককে খুব বেশি পরীক্ষা দিতে হয়নি।}
-        * **5.0 - 5.9:** প্রভাবহীন ও হতাশাজনক খেলা বা সুযোগ হাতছাড়া করা। Foul = আক্রমণ থামানোর জন্য কৌশলগত বা একটু কঠিন ফাউল করে হলুদ কার্ড খেয়েছে। {GK : দুর্বল শট ক্লিয়ার করতে না পারা বা নিজের পজিশনিংয়ে হালকা ভুল থাকা।}
-        * **4.0 - 4.9:** বাজে খেলা এবং পেনাল্টি বা প্রতিপক্ষকে সুযোগ উপহার দেওয়া। Foul = বারবার ফাউল করায় রেফারি শেষ সতর্কবার্তা (Final Warning) দিয়েছেন। {GK : সহজ বলে হাত থেকে মিস করে বিপদ বাড়ানো বা বাজে পেনাল্টি দেওয়া।}
-        * **3.0 - 3.9:** একের পর এক গুরুতর ভুল করে দলকে বিপদে ফেলা। Foul = বেশ কয়েকটি ছোট ফাউল করেছে, রেফারি মৌখিক সতর্কবার্তা দিয়েছেন। {GK : সহজ শটে গোল হজম করা এবং পাসিংয়ে বারবার ভুল করা।}
-        * **2.0 - 2.9:** মানসম্মত খেলার ধারেকাছেও নেই। Foul = ২টির মতো ছোটখাটো ফাউল করেছে, যেগুলো ট্যাকল বা বল দখলের চেষ্টা ছিল। {GK : খুব দুর্বল}
-        * **1.0 - 1.9:** মাঠে থাকা আর না থাকা সমান, চরম বাজে পারফর্ম্যান্স। Foul = মাত্র ১টি সাধারণ ও হালকা ফাউল করেছে (কোনো কার্ড নেই)। {GK : বিপর্যয়কর (আত্মঘাতী ভুল)}
-        * **0.0 - 0.9:** অতি নিম্নমানের পারফর্ম্যান্স বা খেলায় কোনো অংশই নিতে না পারা। Foul = একটি ফাউলও করেনি, একদম পরিচ্ছন্ন ও ফেয়ার প্লে বজায় রেখেছে।{GK : অযোগ্য}
-        """)
+    st.markdown("""
+    ### ⚽ Player Rating Guide
+    * **১০.০:** রূপকথাতুল্য বা সর্বকালের সেরা পারফরম্যান্স (যেমন: হ্যাটট্রিক + একাধিক অ্যাসিস্ট)।
+    * **৯.০ - ৯.৯:** ম্যাচের একক নায়ক এবং ম্যাচজেতানো অসাধারণ নৈপুণ্য।
+    * **৮.০ - ৮.৯:** চমৎকার খেলা, যার মধ্যে গুরুত্বপূর্ণ গোল বা অ্যাসিস্ট রয়েছে।
+    * **৭.০ - ৭.৯:** নির্ভরযোগ্য ও ভালো পারফরম্যান্স, কোনো বড় ভুল ছাড়া।
+    * **৬.০ - ৬.৯:** সাধারণ বা গড়পড়তা পারফরম্যান্স (ম্যাচ শুরুর সাধারণ বেস পয়েন্ট)।
+    * **৫.০ - ৫.৯:** প্রভাবহীন ও হতাশাজনক খেলা বা সুযোগ হাতছাড়া করা।
+    * **৪.০ - ৪.৯:** বাজে খেলা এবং পেনাল্টি বা প্রতিপক্ষকে সুযোগ উপহার দেওয়া।
+    * **৩.০ - ৩.৯:** একের পর এক গুরুতর ভুল করে দলকে বিপদে ফেলা।
+    * **১.০ - ২.৯:** লাল কার্ড পাওয়া বা আত্মঘাতী গোল করে ম্যাচ হারানো বিপর্যয়কর পারফরম্যান্স।
+    * **০.০:** ইচ্ছাকৃতভাবে দলের ক্ষতি করা বা চরমতম ব্যর্থতা।
+
+    ---
+    ### ⚠️ Foul Rating Guide
+    * **০:** একটি ফাউলও করেনি, একদম পরিচ্ছন্ন ও ফেয়ার প্লে বজায় রেখেছে।
+    * **১:** মাত্র ১টি সাধারণ ও হালকা ফাউল করেছে (কোনো কার্ড নেই)।
+    * **২:** ২টির মতো ছোটখাটো ফাউল করেছে, যেগুলো ট্যাকল বা বল দখলের চেষ্টা ছিল।
+    * **৩:** বেশ কয়েকটি ছোট ফাউল করেছে, রেফারি মৌখিক সতর্কবার্তা দিয়েছেন।
+    * **৪:** বারবার ফাউল করায় রেফারি শেষ সতর্কবার্তা (Final Warning) দিয়েছেন।
+    * **৫:** আক্রমণ থামানোর জন্য কৌশলগত বা একটু কঠিন ফাউল করে হলুদ কার্ড খেয়েছে।
+    * **৬:** ম্যাচে ২টি আলাদা ফাউলের কারণে ১টি হলুদ কার্ড পেয়েছে।
+    * **৭:** ক্রমাগত বা ফাউলের ওপর ফাউল করে দলকে ঝুঁকিতে ফেলেছে।
+    * **৮:** বিপজ্জনক বা খারাপ ট্যাকল করে সরাসরি লাল কার্ড পেয়ে মাঠ ছেড়েছে।
+    * **৯:** চরম সহিংস বা উগ্র আচরণ করে ফাউল এবং সরাসরি লাল কার্ড খেয়েছে।
+    * **১০:** ম্যাচের সবচেয়ে বেশি বা ক্ষতিকর ফাউলকারী (বিপজ্জনক ফাউল + লাল কার্ড + পেনাল্টি দেওয়া)।
+
+    ---
+    ### 🧤 Goalkeeper (GK) Rating Guide
+    * **১০.০:** অবিশ্বসনীয় বা ম্যাচজেতানো সেভ (যেমন: শেষ মুহূর্তে পেনাল্টি সেভ বা ৪+ নিশ্চিত গোল বাঁচানো)।
+    * **৯.০ - ৯.৯:** একের পর এক দুর্দান্ত সেভ করে দলকে একাই জয় এনে দেওয়া।
+    * **৮.০ - ৮.৯:** অন্তত ৩-৪টি নিশ্চিত গোলের সেভ এবং ক্লিন শিট (Clean Sheet) বজায় রাখা।
+    * **৭.০ - ৭.৯:** নির্ভরযোগ্য পারফরম্যান্স, সাধারণ সেভগুলো ঠিকঠাক করা এবং বড় কোনো ভুল না করা।
+    * **৬.০ - ৬.৯:** গড়পড়তা খেলা (ম্যাচ শুরুর বেস পয়েন্ট), যেখানে গোলরক্ষককে খুব বেশি পরীক্ষা দিতে হয়নি।
+    * **৫.০ - ৫.৯:** দুর্বল শট ক্লিয়ার করতে না পারা বা নিজের পজিশনিংয়ে হালকা ভুল থাকা।
+    * **৪.০ - ৪.৯:** সহজ বলে হাত থেকে মিস করে বিপদ বাড়ানো বা বাজে পেনাল্টি দেওয়া।
+    * **৩.০ - ৩.৯:** সহজ শটে গোল হজম করা এবং পাসিংয়ে বারবার ভুল করা।
+    * **১.০ - ২.৯:** মারাত্মক ভুল (Howler) করে গোল খাওয়া বা লাল কার্ড পেয়ে মাঠ ছাড়া।
+    * **০.০:** চরম বিপর্যয়কর পারফরম্যান্স (যেমন: একাধিক বাজে ভুল এবং আত্মঘাতী গোলে ম্যাচ হারানো)।
+    """)
         
     active_users = get_active_unblocked_users()
     targets = [u for u in active_users.keys() if u != curr_username]
