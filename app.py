@@ -8,6 +8,7 @@ from PIL import Image
 import io
 import json
 import os
+import base64
 
 # ==========================================
 # PERMANENT MEMORY FILE ENGINE (JSON STORAGE)
@@ -15,24 +16,19 @@ import os
 DB_FILE = "asmb_football_club_data.json"
 
 def load_data_from_file():
-    """ফাইল থেকে সেভ থাকা ডাটা অ্যাপে নিয়ে আসে"""
+    """ফাইল থেকে স্থায়ীভাবে সংরক্ষিত ডাটা অ্যাপে নিয়ে আসে"""
     if os.path.exists(DB_FILE):
         try:
-            with open(DB_FILE, "r") as f:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
     return None
 
 def save_data_to_file():
-    """মেমোরি সেভ রাখতে সব ডাটা ফাইলে রাইট করে"""
+    """ডাটা ফাইলে সুরক্ষিত করে সেভ করে"""
     data_to_save = {
-        "app_settings": {
-            "app_name": st.session_state.app_settings.get("app_name", "ASMB United Football Club"),
-            "bg_color": st.session_state.app_settings.get("bg_color", "#0e1117"),
-            "max_register_limit": st.session_state.app_settings.get("max_register_limit", 50),
-            "club_photo_b64": st.session_state.app_settings.get("club_photo_b64", None)
-        },
+        "app_settings": st.session_state.app_settings,
         "users": st.session_state.users,
         "ratings_db": {f"{k[0]}|||{k[1]}": v for k, v in st.session_state.ratings_db.items()},
         "player_stats": st.session_state.player_stats,
@@ -46,28 +42,27 @@ def save_data_to_file():
         "block_appeals": st.session_state.block_appeals,
         "match_availability_poll": st.session_state.get("match_availability_poll", {})
     }
-    with open(DB_FILE, "w") as f:
-        json.dump(data_to_save, f, indent=4)
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data_to_save, f, indent=4, ensure_ascii=False)
 
 # ==========================================
-# 0. PAGE CONFIG & PERSISTENT SESSION STATE
+# 0. INITIALIZE SESSION & DATABASE
 # ==========================================
 st.set_page_config(
-    page_title="ASMB United FC",
+    page_title="ASMB United Football Club",
     page_icon="⚽",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 def init_db():
-    """Initialize global database tables and restore permanent memory."""
     if "db_initialized" not in st.session_state:
         saved_data = load_data_from_file()
         
         if saved_data:
             st.session_state.app_settings = saved_data.get("app_settings", {
                 "app_name": "ASMB United Football Club",
-                "bg_color": "#0e1117",
+                "bg_color": "#00D2FF",
                 "max_register_limit": 50,
                 "club_photo_b64": None
             })
@@ -98,7 +93,7 @@ def init_db():
         else:
             st.session_state.app_settings = {
                 "app_name": "ASMB United Football Club",
-                "bg_color": "#0e1117",
+                "bg_color": "#00D2FF",
                 "max_register_limit": 50,
                 "club_photo_b64": None
             }
@@ -126,26 +121,22 @@ def init_db():
 init_db()
 
 # ==========================================
-# 1. DYNAMIC CSS & BRANDING OVERRIDES
+# 1. DYNAMIC COLOR ENGINE & CSS INJECTION
 # ==========================================
+def get_daily_theme_colors():
+    """দৈনিক ভিত্তিতে উজ্জ্বল ব্যাকগ্রাউন্ড এবং বিপরীত টেক্সট কালার তৈরি করে"""
+    bright_bg_colors = ["#FFD166", "#06D6A0", "#118AB2", "#FF70A6", "#FF9F1C", "#70D6FF", "#E76F51"]
+    day_idx = datetime.datetime.now().day % len(bright_bg_colors)
+    bg = bright_bg_colors[day_idx]
+    
+    # ব্যাকগ্রাউন্ড উজ্জ্বল হলে টেক্সট গাঢ়/বিপরীত হবে
+    text_colors = ["#000000", "#1A0033", "#002966", "#4A001F", "#330000", "#001A33", "#220000"]
+    txt = text_colors[day_idx]
+    
+    return bg, txt
 
-def execute_daily_ai_background_script():
-    bright_colors = [
-        "#00D2FF", "#FF5E7E", "#FFD166", "#06D6A0", 
-        "#A29BFE", "#FF9F43", "#00CECB"
-    ]
-    today_index = datetime.datetime.now().day % len(bright_colors)
-    if "custom_bg_set" not in st.session_state:
-        st.session_state.app_settings["bg_color"] = bright_colors[today_index]
-
-execute_daily_ai_background_script()
-
-def get_daily_club_title_color():
-    title_colors = ["#FF1493", "#00FF7F", "#FF4500", "#FFD700", "#1E90FF", "#9370DB", "#FF00FF"]
-    return title_colors[datetime.datetime.now().day % len(title_colors)]
-
-bg_color = st.session_state.app_settings.get("bg_color", "#00D2FF")
-title_color = get_daily_club_title_color()
+bg_color, title_text_color = get_daily_theme_colors()
+st.session_state.app_settings["bg_color"] = bg_color
 
 st.markdown(f"""
     <style>
@@ -157,22 +148,21 @@ st.markdown(f"""
         font-weight: 600;
     }}
     .daily-club-title {{
-        color: {title_color} !important;
-        font-size: 2.2rem !important;
+        color: {title_text_color} !important;
+        font-size: 2.3rem !important;
         font-weight: 900 !important;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        text-shadow: 2px 2px 5px rgba(255,255,255,0.6);
     }}
     div.stButton > button {{
         background-color: #000000 !important;
         color: #FFFFFF !important;
         border: 2px solid #000000 !important;
-        border-radius: 6px !important;
+        border-radius: 8px !important;
         font-weight: bold !important;
     }}
     div.stButton > button:hover {{
-        background-color: #222222 !important;
+        background-color: #333333 !important;
         color: #FFFFFF !important;
-        border-color: #000000 !important;
     }}
     </style>
 """, unsafe_allow_html=True)
@@ -180,6 +170,9 @@ st.markdown(f"""
 # ==========================================
 # 2. HELPER CALCULATORS & BUSINESS LOGIC
 # ==========================================
+def get_active_unblocked_users():
+    return {u: data for u, data in st.session_state.users.items() if data.get("status") == "Active"}
+
 def compute_player_rating(username):
     user_ratings = [data["rating"] for (rater, target), data in st.session_state.ratings_db.items() if target == username]
     user_fouls = [data["fouls"] for (rater, target), data in st.session_state.ratings_db.items() if target == username]
@@ -187,14 +180,28 @@ def compute_player_rating(username):
     base_rating = (sum(user_ratings) / len(user_ratings)) if user_ratings else 6.0
     avg_fouls = (sum(user_fouls) / len(user_fouls)) if user_fouls else 0.0
     
-    stats = st.session_state.player_stats.get(username, {"goals": 0, "assists": 0, "conceded_penalty": 0.0, "attendance": "Present", "rating_penalty": 0.0, "gk_saves": 0})
+    stats = st.session_state.player_stats.get(username, {
+        "goals": 0, "assists": 0, "conceded_penalty": 0.0, "attendance": "Present", "rating_penalty": 0.0, "gk_saves": 0
+    })
     
-    goals_bonus = stats["goals"] * 0.5
-    assists_bonus = stats["assists"] * 0.3
+    goals_bonus = stats.get("goals", 0) * 0.5
+    assists_bonus = stats.get("assists", 0) * 0.3
     gk_saves_bonus = stats.get("gk_saves", 0) * 0.2
     foul_penalty = avg_fouls * 0.2
     
-    net_rating = base_rating + goals_bonus + assists_bonus + gk_saves_bonus - foul_penalty - stats["conceded_penalty"] - stats["rating_penalty"]
+    pos = st.session_state.users.get(username, {}).get("position", "")
+    conceded = st.session_state.match_settings.get("goals_conceded", 0)
+    
+    conceded_penalty = 0.0
+    if conceded > 0:
+        if pos == "GK":
+            conceded_penalty = conceded * 1.0
+        elif pos in ["CB", "LB", "RB", "DF"]:
+            conceded_penalty = conceded * 0.75
+        else:
+            conceded_penalty = conceded * 0.5
+            
+    net_rating = base_rating + goals_bonus + assists_bonus + gk_saves_bonus - foul_penalty - conceded_penalty - stats.get("rating_penalty", 0.0)
     
     if stats.get("attendance") == "Absent":
         net_rating -= 1.0
@@ -207,8 +214,7 @@ def get_highest_motm_player():
     votes_list = list(st.session_state.motm_votes.values())
     if not votes_list:
         return None
-    winner = max(set(votes_list), key=votes_list.count)
-    return winner
+    return max(set(votes_list), key=votes_list.count)
 
 def update_star_players():
     top_motm_player = get_highest_motm_player()
@@ -218,23 +224,38 @@ def update_star_players():
             continue
             
         rating = compute_player_rating(uname)
-        if rating > 7.5 or (top_motm_player and uname == top_motm_player):
+        if rating > 8.5 or (top_motm_player and uname == top_motm_player):
             udata["is_star"] = True
         else:
             udata["is_star"] = False
 
-def audit_block_reason(reason):
-    invalid_keywords = ["test", "joke", "nothing", "fun", "no reason", "random", "asdf", "lol"]
-    clean_reason = reason.strip().lower()
-    if len(clean_reason) < 5 or any(k in clean_reason for k in invalid_keywords):
-        return False
-    return True
-
-def get_active_unblocked_users():
-    return {u: data for u, data in st.session_state.users.items() if data.get("status") == "Active"}
+def check_and_publish_attendance_notice():
+    active_users = get_active_unblocked_users()
+    poll_data = st.session_state.get("match_availability_poll", {})
+    
+    all_answered = all(u in poll_data for u in active_users.keys())
+    if all_answered and len(active_users) > 0:
+        if not st.session_state.get("attendance_published_today", False):
+            present_list = [f"• {active_users[u]['full_name']} (@{u})" for u, ans in poll_data.items() if ans == "Yes"]
+            absent_list = [f"• {active_users[u]['full_name']} (@{u})" for u, ans in poll_data.items() if ans == "No"]
+            
+            notice_text = f"### 📋 Matchday Attendance Summary ({datetime.date.today()})\n\n"
+            notice_text += f"**✅ Present ({len(present_list)}):**\n" + ("\n".join(present_list) if present_list else "None") + "\n\n"
+            notice_text += f"**❌ Absent ({len(absent_list)}):**\n" + ("\n".join(absent_list) if absent_list else "None")
+            
+            st.session_state.notice_board.append({
+                "id": len(st.session_state.notice_board) + 1,
+                "author": "System Admin",
+                "title": f"Official Attendance Summary - {datetime.date.today()}",
+                "content": notice_text,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "comments": []
+            })
+            st.session_state.attendance_published_today = True
+            save_data_to_file()
 
 # ==========================================
-# 3. AUTHENTICATION & LOGIN / REGISTRATION
+# 3. AUTHENTICATION & FORGET PASSWORD SYSTEM
 # ==========================================
 if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
@@ -242,7 +263,14 @@ if "authenticated_user" not in st.session_state:
 def login_register_surface():
     st.markdown(f'<h1 class="daily-club-title">⚽ {st.session_state.app_settings["app_name"]}</h1>', unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["🔒 Member Login", "📝 New Registration"])
+    if st.session_state.app_settings.get("club_photo_b64"):
+        try:
+            img_bytes = base64.b64decode(st.session_state.app_settings["club_photo_b64"])
+            st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True)
+        except Exception:
+            pass
+
+    tab1, tab2, tab3 = st.tabs(["🔒 Login", "📝 Register", "🔑 Forget Password"])
     
     with tab1:
         st.subheader("Login to Dashboard")
@@ -260,7 +288,7 @@ def login_register_surface():
                     st.error("Invalid password. Please try again.")
             else:
                 st.error("Username does not exist. Please register first.")
-                
+
     with tab2:
         st.subheader("Club Registration Form")
         active_count = len(get_active_unblocked_users())
@@ -269,39 +297,38 @@ def login_register_surface():
         st.info(f"👥 **Registered Active Members:** {active_count} / {max_limit}")
         
         if active_count >= max_limit:
-            st.error("⛔ Registration limit reached! New registrations are currently paused by Admin.")
+            st.error("⛔ Registration limit reached! Controlled by Admin.")
             return
 
-        reg_username = st.text_input("Username (Unique Key)*", key="reg_uname").strip()
+        reg_username = st.text_input("Username (Unique ID)*", key="reg_uname").strip()
         reg_password = st.text_input("Password*", type="password", key="reg_pass")
-        reg_sec_key = st.text_input("Set Forget Password Security Key*", key="reg_sec_key", help="Required to reset password if forgotten.")
+        reg_sec_key = st.text_input("Security Key (Required for Reset Password)*", key="reg_sec_key", type="password")
         reg_full_name = st.text_input("Full Name*", key="reg_fullname")
         reg_jersey_num = st.number_input("Jersey Number*", min_value=1, max_value=99, step=1)
         reg_jersey_name = st.text_input("Jersey Player Name*", key="reg_jname")
         
-        reg_photo_file = st.file_uploader("Photo Upload (Optional)", type=["jpg", "png", "jpeg"])
+        reg_photo_file = st.file_uploader("Upload Photo (Optional)", type=["jpg", "png", "jpeg"])
         reg_photo_b64 = None
         if reg_photo_file:
-            import base64
             reg_photo_b64 = base64.b64encode(reg_photo_file.read()).decode('utf-8')
 
         reg_personal_ai = st.text_input("Personal AI Custom Name*", value="Jarvis", key="reg_pai")
         
         is_first_user = len(st.session_state.users) == 0
         if is_first_user:
-            st.info("ℹ️ You are the first registered user. You will automatically be granted Superadmin (S.A) privileges!")
+            st.info("ℹ️ First user automatically granted Superadmin (S.A) role.")
             reg_position = st.selectbox("Assign Initial Position (Superadmin Exclusive)", ["GK","CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"])
         else:
-            st.warning("🔒 Position field is strictly disabled during registration. An Admin/Superadmin will assign your position post-registration.")
+            st.warning("🔒 Position assignment is strictly disabled during registration. S.A/Admin will set your position later.")
             reg_position = "Unassigned"
 
         if st.button("Register Account", key="btn_reg"):
             if not reg_username or not reg_password or not reg_full_name or not reg_jersey_name or not reg_personal_ai or not reg_sec_key:
-                st.error("Please fill in all mandatory fields including Security Key.")
+                st.error("Please fill in all required fields!")
                 return
             
             if reg_username in st.session_state.users:
-                st.error("⚠️ Username already exists!")
+                st.error("⚠️ Username already exists! Redirecting to login...")
                 return
             
             role = "Superadmin" if is_first_user else "Player"
@@ -326,58 +353,79 @@ def login_register_surface():
             }
             
             save_data_to_file()
-            st.success("Registration successful! Redirecting to login...")
-            st.rerun()
+            st.success("Registration successful! You can now login.")
+
+    with tab3:
+        st.subheader("🔑 Forget Password Reset")
+        fp_uname = st.text_input("Enter Username:", key="fp_uname").strip()
+        fp_sec_key = st.text_input("Enter Security Key:", key="fp_sec_key", type="password")
+        fp_new_pass = st.text_input("Enter New Password:", key="fp_new_pass", type="password")
+        
+        if st.button("Reset Password", key="btn_fp_reset"):
+            if fp_uname in st.session_state.users:
+                u = st.session_state.users[fp_uname]
+                if u.get("sec_key") == fp_sec_key and fp_sec_key.strip():
+                    u["password"] = fp_new_pass
+                    save_data_to_file()
+                    st.success("Password successfully updated! Please login with your new password.")
+                else:
+                    st.error("Incorrect Security Key or not set!")
+            else:
+                st.error("Username not found!")
 
 if not st.session_state.authenticated_user:
     login_register_surface()
     st.stop()
 
 # ==========================================
-# FORGET / LEGACY USER SECURITY KEY POP-UP
+# MANDATORY SECURITY KEY POP-UP FOR EXISTING USERS
 # ==========================================
 curr_username = st.session_state.authenticated_user
 curr_user = st.session_state.users[curr_username]
 
 if "sec_key" not in curr_user or not curr_user["sec_key"]:
-    st.warning("🔑 **Security Update Required:** Security Key সেট করা নেই। নিরাপত্তা ব্যবস্থার অংশ হিসেবে আপনার গোপন সিকিউরিটি কী (Forget Password Key) সেট করুন।")
-    legacy_key = st.text_input("Enter your new Security Key:", type="password", key="legacy_sec_key_input")
-    if st.button("Save Security Key", key="btn_save_legacy_key"):
+    st.warning("🔑 **Security Key Mandatory Update:** আপনার অ্যাকাউন্টে কোনো Security Key সেট করা নেই। পাসওয়ার্ড রিসেট করার নিরাপত্তার জন্য একটি গোপন সিকিউরিটি কী দিন।")
+    legacy_key = st.text_input("Set Security Key:", type="password", key="pop_sec_key")
+    if st.button("Save & Proceed to App", key="btn_save_pop_key"):
         if legacy_key.strip():
             curr_user["sec_key"] = legacy_key.strip()
             save_data_to_file()
-            st.success("Security Key saved successfully!")
+            st.success("Security Key Saved!")
             st.rerun()
         else:
-            st.error("Please enter a valid key.")
+            st.error("Cannot leave Security Key empty.")
     st.stop()
 
 # ==========================================
-# MATCHDAY PRE-POLL DIALOG (FRIDAY/SATURDAY)
+# SATURDAY-ONLY MATCHDAY PRE-POLL DIALOG
 # ==========================================
-if curr_user["status"] == "Active" and curr_username not in st.session_state.match_availability_poll:
-    st.info("📅 **Matchday Availability Poll:** আগামীকালের (Matchday) খেলায় আপনি কি উপস্থিত থাকবেন?")
+is_saturday = datetime.datetime.now().weekday() == 5  # Monday=0 ... Saturday=5, Sunday=6
+
+if is_saturday and curr_user["status"] == "Active" and curr_username not in st.session_state.match_availability_poll:
+    st.info("📅 **Saturday Pre-Match Poll:** আগামীকাল রবিবারের (Sunday Matchday) ম্যাচে কি আপনি খেলবেন?")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
         if st.button("✅ Yes, I will attend", key="poll_yes"):
             st.session_state.match_availability_poll[curr_username] = "Yes"
             st.session_state.player_stats[curr_username]["attendance"] = "Present"
             save_data_to_file()
+            check_and_publish_attendance_notice()
             st.rerun()
     with col_p2:
         if st.button("❌ No, I cannot attend", key="poll_no"):
             st.session_state.match_availability_poll[curr_username] = "No"
             st.session_state.player_stats[curr_username]["attendance"] = "Absent"
             save_data_to_file()
+            check_and_publish_attendance_notice()
             st.rerun()
 
 # ==========================================
-# 4. AUTHENTICATED SESSION SETUP & SIDEBAR
+# 4. SIDEBAR & NAVIGATION
 # ==========================================
 update_star_players()
 
 st.sidebar.markdown(f'<h2 class="daily-club-title">{st.session_state.app_settings["app_name"]}</h2>', unsafe_allow_html=True)
-st.sidebar.markdown(f"**Logged in as:** {curr_user['full_name']} (`@{curr_username}`)")
+st.sidebar.markdown(f"**User:** {curr_user['full_name']} (`@{curr_username}`)")
 st.sidebar.markdown(f"**Role:** `{curr_user['role']}` | **Position:** `{curr_user['position']}`")
 
 if curr_user["status"] == "Blocked":
@@ -397,7 +445,7 @@ else:
         "👥 Player Directory & Roster",
         "🖼️ Member Photo Gallery",
         "⚽ Squad Generation & Tactics",
-        "⭐ Teammate Ratings & Fouls",
+        "⭐ Teammate Ratings & Guide",
         "⚙️ Manage Profile",
         "💬 Club House Group Chat",
         "🤖 Football AI (Public)",
@@ -409,83 +457,91 @@ else:
     nav_choice = st.sidebar.radio("Navigation Menu", options)
 
 # ==========================================
-# 5. BLOCKED USER LOCKED DOWN SURFACE
+# 5. BLOCKED USER SURFACE
 # ==========================================
 if curr_user["status"] == "Blocked":
-    st.error("🚨 Your account has been blocked by the Management due to policy/discipline rules.")
-    st.info(f"**Reason for Block:** {curr_user.get('block_reason', 'No reason provided')}")
-    
-    st.subheader("🚩 Report / Flag User for Fair-Play Violation & Appeal Block")
-    st.write("You are permitted to submit **one final appeal message** to the Superadmin.")
+    st.error("🚨 Your account is BLOCKED by management.")
+    st.info(f"**Reason:** {curr_user.get('block_reason', 'Policy Violation')}")
+    st.subheader("🚩 Report / Flag User for Fair-Play Violation")
     
     if curr_username in st.session_state.block_appeals:
-        st.warning(f"Your submitted appeal: \"{st.session_state.block_appeals[curr_username]}\"")
-        st.info("Your appeal has been received and is under review by the Superadmin.")
+        st.warning(f"Your Submitted Appeal: \"{st.session_state.block_appeals[curr_username]}\"")
     else:
-        appeal_msg = st.text_area("Type your appeal / dispute message here:")
-        if st.button("Submit Final Appeal", key="btn_submit_appeal"):
-            if appeal_msg.strip():
-                st.session_state.block_appeals[curr_username] = appeal_msg.strip()
+        appeal_text = st.text_area("Write appeal to Superadmin:")
+        if st.button("Submit Final Appeal", key="btn_appeal"):
+            if appeal_text.strip():
+                st.session_state.block_appeals[curr_username] = appeal_text.strip()
                 save_data_to_file()
-                st.success("Your appeal message has been submitted to the Superadmin.")
+                st.success("Appeal submitted to Superadmin.")
                 st.rerun()
-            else:
-                st.error("Please enter a valid message before submitting.")
     st.stop()
 
 # ==========================================
-# 6. FEATURE MODULE: NOTICE BOARD & NEWS
+# 6. NOTICE BOARD & COMMENTS
 # ==========================================
 if nav_choice == "📌 Notice Board & News":
-    st.header("📌 Official Notice Board & Communications")
+    st.header("📌 Official Notice Board")
     
     if not st.session_state.notice_board:
         st.info("No notices posted yet.")
     else:
-        for notice in reversed(st.session_state.notice_board):
-            with st.expander(f"[{notice['type']}] {notice['title']} - {notice['timestamp']} (By: {notice['author']})", expanded=True):
+        for idx, notice in enumerate(reversed(st.session_state.notice_board)):
+            with st.expander(f"📢 {notice['title']} - {notice['timestamp']} (By: {notice['author']})", expanded=(idx==0)):
                 st.markdown(notice['content'])
+                
+                st.markdown("---")
+                st.markdown("##### 💬 Comments")
+                comments = notice.get("comments", [])
+                for c in comments:
+                    st.caption(f"**{c['user']}:** {c['text']}")
+                    
+                comment_input = st.text_input("Add a comment:", key=f"cmt_{notice['id']}")
+                if st.button("Post Comment", key=f"btn_cmt_{notice['id']}"):
+                    if comment_input.strip():
+                        if "comments" not in notice:
+                            notice["comments"] = []
+                        notice["comments"].append({
+                            "user": curr_user["full_name"],
+                            "text": comment_input.strip()
+                        })
+                        save_data_to_file()
+                        st.rerun()
 
 # ==========================================
-# 7. FEATURE MODULE: PLAYER DIRECTORY & ROSTERS
+# 7. PLAYER DIRECTORY & SPECIAL ROSTERS
 # ==========================================
 elif nav_choice == "👥 Player Directory & Roster":
-    st.header("👥 Public Player Directory & Specialized Rosters")
-    
-    tab_dir, tab_star, tab_inj = st.tabs(["📋 Public Player Directory", "⭐ Star Players List", "🏥 Injured Players List"])
+    st.header("👥 Player Directory & Roster")
+    tab1, tab2, tab3 = st.tabs(["📋 Public Directory", "⭐ Star Players List", "🏥 Injured Players List"])
     
     active_users = get_active_unblocked_users()
     
-    with tab_dir:
-        st.subheader("Registered Active Club Members")
+    with tab1:
         dir_data = []
-        for uname, udata in active_users.items():
+        for u, d in active_users.items():
             dir_data.append({
-                "Username": uname,
-                "Full Name": udata["full_name"],
-                "Jersey #": udata["jersey_num"],
-                "Jersey Name": udata["jersey_name"],
-                "Position": udata["position"],
-                "Role": udata["role"],
-                "Rating": compute_player_rating(uname)
+                "Username": u,
+                "Full Name": d["full_name"],
+                "Jersey #": d["jersey_num"],
+                "Jersey Name": d["jersey_name"],
+                "Position": d["position"],
+                "Role": d["role"]
             })
         st.dataframe(pd.DataFrame(dir_data), use_container_width=True)
 
-    with tab_star:
-        st.subheader("⭐ Designated Star Players (> 7.5 Rating or MOTM Winner)")
-        star_players = [u for u, udata in active_users.items() if udata.get("is_star")]
+    with tab2:
+        star_players = [u for u, d in active_users.items() if d.get("is_star")]
         if not star_players:
-            st.info("No star players designated at this moment.")
+            st.info("No star players at the moment.")
         else:
             for sp in star_players:
                 u = active_users[sp]
                 r = compute_player_rating(sp)
-                st.success(f"🌟 **{u['full_name']}** (`@{sp}`) - Position: {u['position']} | Rating: **{r} / 10.0**")
+                st.success(f"🌟 **{u['full_name']}** (`@{sp}`) - Position: {u['position']} | Rating: **{r}**")
 
-    with tab_inj:
-        st.subheader("🏥 Injured Player Roster")
+    with tab3:
         if not st.session_state.injured_players:
-            st.info("No injured players currently logged.")
+            st.info("No injured players listed.")
         else:
             for ip in st.session_state.injured_players:
                 if ip in active_users:
@@ -493,7 +549,7 @@ elif nav_choice == "👥 Player Directory & Roster":
                     st.warning(f"🩹 **{u['full_name']}** (`@{ip}`) - Position: {u['position']}")
 
 # ==========================================
-# GALLERY MODULE: MEMBER PHOTO GALLERY
+# 8. MEMBER PHOTO GALLERY
 # ==========================================
 elif nav_choice == "🖼️ Member Photo Gallery":
     st.header("🖼️ Member Photo Gallery")
@@ -501,10 +557,9 @@ elif nav_choice == "🖼️ Member Photo Gallery":
     photo_users = [u for u, data in active_users.items() if data.get("photo_b64")]
     
     if not photo_users:
-        st.info("এখনো কোনো প্লেয়ার প্রোফাইল ছবি আপলোড করেনি।")
+        st.info("No member profile photos available.")
     else:
         cols = st.columns(3)
-        import base64
         for idx, u in enumerate(photo_users):
             udata = active_users[u]
             img_bytes = base64.b64decode(udata["photo_b64"])
@@ -514,224 +569,187 @@ elif nav_choice == "🖼️ Member Photo Gallery":
                 st.caption(f"👤 **{udata['full_name']}** (@{u})")
 
 # ==========================================
-# 8. FEATURE MODULE: SQUAD GENERATION & TACTICS
+# 9. SQUAD GENERATION & TACTICS
 # ==========================================
 elif nav_choice == "⚽ Squad Generation & Tactics":
-    st.header("⚽ Football AI Tactical Engine & Squad Output")
+    st.header("⚽ Tactical Squad Generator")
     
     if curr_user["role"] not in ["Superadmin", "Admin"]:
-        st.warning("🔒 স্কোয়াড তৈরির ক্ষমতা শুধুমাত্র Superadmin এবং Admin-দের রয়েছে। নিচে লেটেস্ট স্কোয়াড দেওয়া হলো:")
+        st.warning("🔒 Only Superadmin/Admin can generate squads.")
     
-    day_selection = st.selectbox("Select Operational Day Simulation", ["Saturday (Match Squad Generation)", "Practice Day (Mon-Thu Team Split)"])
+    day_sel = st.selectbox("Operation Mode", ["Saturday Match Squad", "Practice Day Split (Mon-Thu)"])
     
-    if day_selection == "Saturday (Match Squad Generation)":
+    if day_sel == "Saturday Match Squad":
         target_count = st.session_state.match_settings.get("asmb_player_count", 11)
-        st.info(f"📋 **Configured Squad Size:** Management selected **{target_count} Players** for this squad.")
+        st.info(f"Target Squad Size: **{target_count} Players**")
         
-        can_generate = curr_user["role"] in ["Superadmin", "Admin"]
-        
-        if can_generate and st.button("Generate Match Squad", key="btn_gen_squad"):
+        if curr_user["role"] in ["Superadmin", "Admin"] and st.button("Generate Match Squad", key="btn_gen_sq"):
             active_users = get_active_unblocked_users()
-            available_players = [u for u in active_users.keys() if u not in st.session_state.injured_players and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"]
+            available = [u for u in active_users.keys() if u not in st.session_state.injured_players and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"]
             
-            position_groups = {}
-            for u in available_players:
+            # Rule: Positional Conflict Filter (Same position highest rated player gets priority)
+            pos_groups = {}
+            for u in available:
                 pos = active_users[u]["position"]
-                if pos not in position_groups:
-                    position_groups[pos] = []
-                position_groups[pos].append(u)
-            
+                pos_groups.setdefault(pos, []).append(u)
+                
             selected_squad = []
-            
-            for pos, players in position_groups.items():
-                sorted_p = sorted(players, key=lambda x: compute_player_rating(x), reverse=True)
-                selected_squad.append(sorted_p[0])
-            
-            remaining_players = [u for u in available_players if u not in selected_squad]
-            remaining_players = sorted(remaining_players, key=lambda x: compute_player_rating(x), reverse=True)
+            for pos, plist in pos_groups.items():
+                plist_sorted = sorted(plist, key=lambda x: compute_player_rating(x), reverse=True)
+                selected_squad.append(plist_sorted[0])  # Take highest rated per position
+                
+            rem_players = [u for u in available if u not in selected_squad]
+            rem_players_sorted = sorted(rem_players, key=lambda x: compute_player_rating(x), reverse=True)
             
             needed = target_count - len(selected_squad)
             if needed > 0:
-                selected_squad.extend(remaining_players[:needed])
-                subs = remaining_players[needed:]
+                selected_squad.extend(rem_players_sorted[:needed])
+                subs = rem_players_sorted[needed:]
             else:
-                subs = remaining_players
+                subs = rem_players_sorted
                 
             starters = selected_squad[:target_count]
             
             st.markdown(f"### 🏆 Starting Lineup ({len(starters)} Players)")
-            squad_notice_text = f"### ⚽ Dynamic Match Squad ({datetime.date.today()})\n\n**Starting Lineup ({len(starters)} Players):**\n"
+            notice_text = f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n\n**Starting Lineup:**\n"
             
             for idx, p in enumerate(starters, 1):
                 r = compute_player_rating(p)
                 u = active_users[p]
                 line = f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**"
                 st.markdown(line)
-                squad_notice_text += f"{line}\n"
+                notice_text += f"{line}\n"
                 
             if subs:
-                st.markdown(f"### 🔄 Substitutes Bench ({len(subs)} Players)")
-                squad_notice_text += f"\n**Substitutes ({len(subs)} Players):**\n"
+                st.markdown(f"### 🔄 Substitutes ({len(subs)} Players)")
+                notice_text += f"\n**Substitutes:**\n"
                 for idx, p in enumerate(subs, 1):
                     r = compute_player_rating(p)
                     u = active_users[p]
                     line = f"Sub {idx}: **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**"
                     st.markdown(line)
-                    squad_notice_text += f"{line}\n"
-            
-            formation = f"Adaptive Tactical Formation ({len(starters)}-a-side Optimized System)"
-            squad_notice_text += f"\n**Tactical Formation:** {formation}"
-            st.success(f"**Tactical Formation Engine:** {formation}")
+                    notice_text += f"{line}\n"
+                    
+            formation = f"Adaptive Tactical Formation ({len(starters)}-a-side)"
+            notice_text += f"\n**Formation:** {formation}"
             
             st.session_state.notice_board.append({
                 "id": len(st.session_state.notice_board) + 1,
-                "author": st.session_state.app_settings["app_name"] + " (Football AI)",
-                "title": f"Official Match Squad ({target_count}-a-side) Announcement",
-                "content": squad_notice_text,
+                "author": "Football AI",
+                "title": f"Match Squad ({target_count}-a-side)",
+                "content": notice_text,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "type": "Match Announcement"
+                "comments": []
             })
             save_data_to_file()
-            st.info("📢 Match squad automatically published to Notice Board!")
-
-    elif day_selection == "Practice Day (Mon-Thu Team Split)":
-        if curr_user["role"] in ["Superadmin", "Admin"] and st.button("Generate Balanced Practice Teams", key="btn_gen_practice"):
-            active_users = get_active_unblocked_users()
-            available_players = [u for u in active_users.keys() if u not in st.session_state.injured_players]
-            sorted_players = sorted(available_players, key=lambda u: compute_player_rating(u), reverse=True)
-            
-            team_a, team_b = [], []
-            rate_a, rate_b = 0.0, 0.0
-            
-            for idx, p in enumerate(sorted_players):
-                r = compute_player_rating(p)
-                if idx % 2 == 0:
-                    team_a.append((p, r))
-                    rate_a += r
-                else:
-                    team_b.append((p, r))
-                    rate_b += r
-                    
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(f"### 🛡️⚡ Iron Strike (Aggregate Rating: {round(rate_a, 2)})")
-                for p, r in team_a:
-                    u = active_users[p]
-                    st.write(f"• **{u['full_name']}** ({u['position']}) - Rating: **{r}**")
-            with col2:
-                st.markdown(f"### 🛡️🔥 Titan Shield (Aggregate Rating: {round(rate_b, 2)})")
-                for p, r in team_b:
-                    u = active_users[p]
-                    st.write(f"• **{u['full_name']}** ({u['position']}) - Rating: **{r}**")
+            st.success("Squad published to Notice Board!")
 
 # ==========================================
-# 9. FEATURE MODULE: TEAMMATE RATINGS & FOULS
+# 10. RATINGS & RATING GUIDE
 # ==========================================
-elif nav_choice == "⭐ Teammate Ratings & Fouls":
-    st.header("⭐ Teammate Performance Rating & Foul Management")
-    active_users = get_active_unblocked_users()
-    target_users = [u for u in active_users.keys() if u != curr_username]
+elif nav_choice == "⭐ Teammate Ratings & Guide":
+    st.header("⭐ Rate Teammates & Performance Guide")
     
-    if not target_users:
-        st.warning("No other active members available to rate.")
-    else:
-        selected_target = st.selectbox("Select Teammate to Rate:", target_users)
-        existing_entry = st.session_state.ratings_db.get((curr_username, selected_target), {"rating": 6.0, "fouls": 0})
+    with st.expander("📘 Rating Guide Panel (Click to expand)"):
+        st.markdown("""
+        * **9.0 - 10.0:** World-class match-winning performance.
+        * **7.5 - 8.9:** Solid, error-free play with high tactical discipline.
+        * **6.0 - 7.4:** Average contribution.
+        * **Under 6.0:** Multiple errors, poor tactical adherence, or high fouls.
+        """)
         
-        new_rating = st.slider("Performance Rating (0.0 - 10.0)", min_value=0.0, max_value=10.0, value=float(existing_entry["rating"]), step=0.1)
-        new_fouls = st.number_input("Fouls / Infractions Count (0 - 10)", min_value=0, max_value=10, value=int(existing_entry["fouls"]), step=1)
+    active_users = get_active_unblocked_users()
+    targets = [u for u in active_users.keys() if u != curr_username]
+    
+    if targets:
+        target = st.selectbox("Select Teammate:", targets)
+        prev = st.session_state.ratings_db.get((curr_username, target), {"rating": 6.0, "fouls": 0})
         
-        if st.button("Submit / Correct Rating", key="btn_save_rating"):
-            st.session_state.ratings_db[(curr_username, selected_target)] = {
-                "rating": round(new_rating, 2),
-                "fouls": new_fouls
-            }
+        new_r = st.slider("Rating (0.0 - 10.0)", 0.0, 10.0, float(prev["rating"]), 0.1)
+        new_f = st.number_input("Fouls (0 - 10)", 0, 10, int(prev["fouls"]), 1)
+        
+        if st.button("Save/Correct Rating", key="btn_save_r"):
+            st.session_state.ratings_db[(curr_username, target)] = {"rating": round(new_r, 2), "fouls": new_f}
             save_data_to_file()
-            st.success(f"Successfully recorded rating for @{selected_target}!")
+            st.success("Rating saved!")
 
 # ==========================================
-# PROFILE MANAGEMENT MODULE
+# 11. MANAGE PROFILE (WITHOUT POSITION)
 # ==========================================
 elif nav_choice == "⚙️ Manage Profile":
-    st.header("⚙️ Personal Profile Settings")
+    st.header("⚙️ Edit Profile")
+    st.warning("🔒 Position can only be changed by Admin/Superadmin.")
+    
     new_fn = st.text_input("Full Name:", value=curr_user["full_name"])
-    new_jn = st.number_input("Jersey Number:", min_value=1, max_value=99, value=int(curr_user["jersey_num"]))
+    new_jn = st.number_input("Jersey Number:", 1, 99, int(curr_user["jersey_num"]))
+    new_jname = st.text_input("Jersey Player Name:", value=curr_user["jersey_name"])
     new_pai = st.text_input("Personal AI Name:", value=curr_user["personal_ai_name"])
     
-    prof_photo = st.file_uploader("Update Profile Photo:", type=["jpg", "png", "jpeg"])
+    pic = st.file_uploader("Update Profile Photo:", type=["jpg", "png", "jpeg"])
     
-    if st.button("Update Profile Info", key="btn_update_profile"):
+    if st.button("Save Profile Updates", key="btn_prof_save"):
         curr_user["full_name"] = new_fn
         curr_user["jersey_num"] = new_jn
+        curr_user["jersey_name"] = new_jname
         curr_user["personal_ai_name"] = new_pai
-        if prof_photo:
-            import base64
-            curr_user["photo_b64"] = base64.b64encode(prof_photo.read()).decode('utf-8')
+        if pic:
+            curr_user["photo_b64"] = base64.b64encode(pic.read()).decode('utf-8')
         save_data_to_file()
-        st.success("Profile updated successfully!")
+        st.success("Profile updated!")
         st.rerun()
 
 # ==========================================
-# 10. FEATURE MODULE: CLUB HOUSE GROUP CHAT
+# 12. CLUB HOUSE CHAT
 # ==========================================
 elif nav_choice == "💬 Club House Group Chat":
-    st.header("💬 ASMB United WhatsApp-Style Member Chat")
+    st.header("💬 Member Chat")
     
-    chat_container = st.container()
-    with chat_container:
-        if not st.session_state.group_chat:
-            st.info("No public messages yet. Start the conversation!")
-        else:
-            for msg in st.session_state.group_chat:
-                st.markdown(f"**[{msg['timestamp']}] {msg['sender']}:** {msg['message']}")
-                
-    st.divider()
-    msg_input = st.text_input("Type message...", key="group_msg_input")
-    if st.button("Send Message", key="btn_send_chat"):
-        if msg_input.strip():
+    for msg in st.session_state.group_chat:
+        st.markdown(f"**[{msg['timestamp']}] {msg['sender']}:** {msg['message']}")
+        
+    m = st.text_input("Type message...", key="chat_in")
+    if st.button("Send", key="btn_chat_send"):
+        if m.strip():
             st.session_state.group_chat.append({
-                "sender": curr_user["full_name"] + f" (@{curr_username})",
-                "message": msg_input.strip(),
+                "sender": f"{curr_user['full_name']} (@{curr_username})",
+                "message": m.strip(),
                 "timestamp": datetime.datetime.now().strftime("%H:%M")
             })
             save_data_to_file()
             st.rerun()
 
 # ==========================================
-# 11. FEATURE MODULE: FOOTBALL AI (PUBLIC)
+# 13. FOOTBALL AI (PUBLIC) WITH ANTI-LINK LEAK
 # ==========================================
 elif nav_choice == "🤖 Football AI (Public)":
-    st.header(f"🤖 Football AI - Public Assistant ({st.session_state.app_settings['app_name']})")
-    st.caption("ℹ️ Public Assistant. Specialized STRICTLY in football tactics and strategies.")
+    st.header("🤖 Football AI (Public - Tactics Only)")
     
     for chat in st.session_state.football_ai_chats:
-        st.markdown(f"**👤 {chat['sender']} ({chat['timestamp']}):** {chat['prompt']}")
+        st.markdown(f"**👤 {chat['sender']}:** {chat['prompt']}")
         st.markdown(f"🤖 **Football AI:** {chat['response']}")
         st.divider()
         
-    prompt = st.text_input("Ask Football AI regarding tactics, counter-plays, or team advice:", key="f_ai_prompt")
-    if st.button("Ask Football AI", key="btn_ask_fai"):
-        if prompt.strip():
-            p_text = prompt.strip()
+    p = st.text_input("Ask Football AI regarding tactics/strategies:", key="fai_in")
+    if st.button("Ask Football AI", key="btn_fai"):
+        if p.strip():
+            text = p.strip()
             
-            if re.search(r'http[s]?://|www\.', p_text) or "link" in p_text.lower() or "url" in p_text.lower():
-                resp = "আমি আন্তরিকভাবে দুঃখিত। কোনো এক্সটার্নাল লিংক বিশ্লেষণ বা ব্রাউজ করার অনুমতি আমার নেই।"
-            elif any(w in p_text.lower() for w in ["weather", "math", "code", "politics", "recipe", "movie", "song"]):
-                resp = f"এই প্রশ্নটি ফুটবলের সাথে সম্পর্কিত নয়। আমি আপনার প্রশ্নটি স্বয়ংক্রিয়ভাবে আপনার **Personal AI ({curr_user['personal_ai_name']})** তে পাঠিয়ে দিয়েছি।"
-                
-                if curr_username not in st.session_state.personal_ai_chats:
-                    st.session_state.personal_ai_chats[curr_username] = []
-                st.session_state.personal_ai_chats[curr_username].append({
-                    "prompt": p_text,
-                    "response": f"হ্যালো {curr_user['full_name']}! আপনার ফুটবল AI থেকে রিডাইরেক্ট হওয়া প্রশ্নের উত্তর: আমি যেকোনো বিষয়ে আপনাকে সাহায্য করতে পারি। আপনার প্রশ্নটি নিয়ে আমি বিস্তারিত কাজ করছি!",
+            # Anti-link and Anti-Scraping Feature
+            if re.search(r'http[s]?://|www\.', text) or "link" in text.lower() or "feature" in text.lower() and "app" in text.lower():
+                resp = "নিরাপত্তাজনিত কারণে অ্যাপের কোনো লিংক বা অভ্যন্তরীণ ফিচার ও আর্কিটেকচার বিশ্লেষণ বা প্রকাশ করা নিষিদ্ধ।"
+            elif any(k in text.lower() for k in ["weather", "recipe", "math", "code", "movie", "song"]):
+                resp = f"এটি ফুটবলের বাইরে প্রশ্ন। প্রশ্নটি স্বয়ংক্রিয়ভাবে আপনার **Personal AI ({curr_user['personal_ai_name']})** পেজে রিডাইরেক্ট করা হলো।"
+                st.session_state.personal_ai_chats.setdefault(curr_username, []).append({
+                    "prompt": text,
+                    "response": f"হ্যালো {curr_user['full_name']}! আপনার প্রশ্নটির উত্তর নিয়ে আমি কাজ করছি।",
                     "timestamp": datetime.datetime.now().strftime("%H:%M")
                 })
             else:
-                resp = f"'{p_text}' সম্পর্কিত ফুটবল ট্যাকটিক্যাল বিশ্লেষণ: খেলায় জয়ী হতে সঠিক পজিশনিং ধরে রাখুন, হাই-প্রেসিং করুন এবং দলগত সমন্বয় নিশ্চিত করুন।"
-            
+                resp = f"'{text}' সম্পর্কিত ট্যাকটিক্যাল পরামর্শ: ফর্মেশন কমপ্যাক্ট রাখুন, হাই-প্রেসিং করুন এবং উইং দিয়ে দ্রুত কাউন্টার অ্যাটাকে যান।"
+                
             st.session_state.football_ai_chats.append({
                 "sender": curr_user["full_name"],
-                "prompt": p_text,
+                "prompt": text,
                 "response": resp,
                 "timestamp": datetime.datetime.now().strftime("%H:%M")
             })
@@ -739,34 +757,30 @@ elif nav_choice == "🤖 Football AI (Public)":
             st.rerun()
 
 # ==========================================
-# 12. FEATURE MODULE: PERSONAL AI (PRIVATE)
+# 14. PERSONAL AI & MOTM VOTING
 # ==========================================
 elif nav_choice == "👤 Personal AI (Private)":
     pai_name = curr_user["personal_ai_name"]
-    st.header(f"👤 {pai_name} - Personal Assistant (Private)")
-    st.caption("🔒 Strictly confidential. Ask ANY questions freely in Bengali.")
+    st.header(f"👤 {pai_name} (Private AI)")
     
-    if curr_username not in st.session_state.personal_ai_chats:
-        st.session_state.personal_ai_chats[curr_username] = []
-        
-    user_p_chats = st.session_state.personal_ai_chats[curr_username]
+    user_pchats = st.session_state.personal_ai_chats.setdefault(curr_username, [])
     
-    for chat in user_p_chats:
-        st.markdown(f"**You ({chat['timestamp']}):** {chat['prompt']}")
+    for chat in user_pchats:
+        st.markdown(f"**You:** {chat['prompt']}")
         st.markdown(f"🤖 **{pai_name}:** {chat['response']}")
         st.divider()
         
-    p_prompt = st.text_input(f"Chat with {pai_name}:", key="p_ai_prompt")
-    if st.button("Send to Personal AI", key="btn_ask_pai"):
-        if p_prompt.strip():
-            p_text = p_prompt.strip()
-            if re.search(r'http[s]?://|www\.', p_text) or "link" in p_text.lower() or "url" in p_text.lower():
-                resp = "আমি অত্যন্ত দুঃখিত। কোনো এক্সটার্নাল লিংক বা ইউআরএল ফিচার পরীক্ষা করা আমার সিকিউরিটি প্রোটোকলে নিষিদ্ধ।"
+    p = st.text_input(f"Ask {pai_name} anything:", key="pai_in")
+    if st.button("Send", key="btn_pai"):
+        if p.strip():
+            text = p.strip()
+            if re.search(r'http[s]?://|www\.', text) or ("link" in text.lower() and "feature" in text.lower()):
+                resp = "দুঃখিত, কোনো অ্যাপ লিংক থেকে তথ্য বা ফিচার বিশ্লেষণ করা আমার জন্য নিষিদ্ধ।"
             else:
-                resp = f"হ্যালো {curr_user['full_name']}! আপনার প্রশ্ন: '{p_text}'। আমি আপনার সার্বিক সহায়তায় প্রস্তুত।"
-            
-            user_p_chats.append({
-                "prompt": p_text,
+                resp = f"হ্যালো {curr_user['full_name']}! আপনার প্রশ্ন: '{text}'। বাংলা ভাষায় যেকোনো তথ্যে আমি সাহায্য করতে পারি।"
+                
+            user_pchats.append({
+                "prompt": text,
                 "response": resp,
                 "timestamp": datetime.datetime.now().strftime("%H:%M")
             })
@@ -774,139 +788,103 @@ elif nav_choice == "👤 Personal AI (Private)":
             st.rerun()
             
     st.divider()
-    st.subheader("🗳️ Sunday Man of the Match (MOTM) Polling Interface")
+    st.subheader("🗳️ Sunday MOTM Poll")
     active_users = get_active_unblocked_users()
-    motm_vote = st.selectbox("Cast your Sunday MOTM Vote:", list(active_users.keys()), key="motm_select")
-    
-    if st.button("Submit MOTM Vote", key="btn_vote_motm"):
-        st.session_state.motm_votes[curr_username] = motm_vote
+    vote = st.selectbox("Vote MOTM:", list(active_users.keys()), key="motm_sel")
+    if st.button("Submit Vote", key="btn_motm"):
+        st.session_state.motm_votes[curr_username] = vote
         save_data_to_file()
-        st.success(f"Vote cast successfully for @{motm_vote}!")
+        st.success(f"Vote cast for @{vote}!")
 
 # ==========================================
-# 13. FEATURE MODULE: ADMIN CONTROL PANEL
+# 15. ADMIN CONTROL PANEL
 # ==========================================
 elif nav_choice == "⚙️ Admin Control Panel":
-    st.header("⚙️ Administrative Control & Management Panel")
+    st.header("⚙️ Admin Control Panel")
     
     if curr_user["role"] not in ["Superadmin", "Admin"]:
-        st.error("⛔ Access Denied. Administrative privileges required.")
+        st.error("Access Denied.")
         st.stop()
         
-    tab_branding, tab_roles, tab_block, tab_stats, tab_reset = st.tabs([
-        "🎨 App Customization & Notices",
-        "👑 Role, Position & Password",
-        "🚫 Block System & Fair-Play Arbitration",
-        "📊 GK Saves, Conceded & Stats",
-        "🧹 Master Reset (S.A Only)"
-    ])
+    t1, t2, t3, t4, t5 = st.tabs(["🎨 Branding & Limit", "👑 Roles & Password", "🚫 Block System", "📊 Match Stats & GK Saves", "🧹 Master Reset"])
     
-    with tab_branding:
-        st.subheader("Dynamically Configure Branding & Limits")
-        new_app_name = st.text_input("Application / Club Name:", value=st.session_state.app_settings["app_name"])
-        max_limit_input = st.number_input("Max Member Registration Limit:", min_value=1, max_value=200, value=int(st.session_state.app_settings.get("max_register_limit", 50)))
-        
-        club_pic = st.file_uploader("Upload Club Photo / Banner:", type=["jpg", "png", "jpeg"])
-        if club_pic:
-            import base64
-            st.session_state.app_settings["club_photo_b64"] = base64.b64encode(club_pic.read()).decode('utf-8')
-            
-        if st.button("Update Branding Settings", key="btn_save_branding"):
-            st.session_state.app_settings["app_name"] = new_app_name
-            st.session_state.app_settings["max_register_limit"] = max_limit_input
+    with t1:
+        st.session_state.app_settings["app_name"] = st.text_input("App Name:", st.session_state.app_settings["app_name"])
+        st.session_state.app_settings["max_register_limit"] = st.number_input("Max Member Limit:", 1, 200, int(st.session_state.app_settings["max_register_limit"]))
+        cpic = st.file_uploader("Upload Club Logo/Photo:", type=["jpg", "png", "jpeg"])
+        if cpic:
+            st.session_state.app_settings["club_photo_b64"] = base64.b64encode(cpic.read()).decode('utf-8')
+        if st.button("Save Settings", key="btn_save_brand"):
             save_data_to_file()
-            st.success("App branding and registration limits updated successfully!")
-            st.rerun()
+            st.success("Branding updated!")
 
-    with tab_roles:
-        st.subheader("Manage User Positions, Password & Roles")
-        target_role_user = st.selectbox("Select Target User:", list(st.session_state.users.keys()), key="role_target_select")
-        
-        col_pos, col_pass = st.columns(2)
-        with col_pos:
-            new_pos = st.selectbox("Position:", ["GK", "CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"], key="select_new_pos")
-            if st.button("Update Position", key="btn_update_pos"):
-                st.session_state.users[target_role_user]["position"] = new_pos
+    with t2:
+        target_u = st.selectbox("Select User:", list(st.session_state.users.keys()))
+        new_pos = st.selectbox("Assign Position:", ["GK", "CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"])
+        if st.button("Update Position", key="btn_adm_pos"):
+            st.session_state.users[target_u]["position"] = new_pos
+            save_data_to_file()
+            st.success("Position updated!")
+            
+        if curr_user["role"] == "Superadmin":
+            new_pass = st.text_input("Force Change Password:", key="adm_fpass")
+            if st.button("Change Password", key="btn_fpass"):
+                st.session_state.users[target_u]["password"] = new_pass
                 save_data_to_file()
-                st.success(f"Updated position of @{target_role_user} to {new_pos}!")
-                
-        with col_pass:
-            if curr_user["role"] == "Superadmin":
-                st.markdown("### 🔑 Force Change User Password")
-                forced_pass = st.text_input("Set New Password:", key="forced_pass_input")
-                if st.button("Change Password", key="btn_force_pass"):
-                    if forced_pass.strip():
-                        st.session_state.users[target_role_user]["password"] = forced_pass.strip()
-                        save_data_to_file()
-                        st.success(f"Password changed successfully for @{target_role_user}!")
+                st.success("Password changed!")
 
-    with tab_block:
-        st.subheader("Block / Unblock Users & Mandatory Fair-Play Arbitration")
-        block_target = st.selectbox("Select Target User to Block/Unblock:", list(st.session_state.users.keys()), key="block_target_select")
-        mandatory_reason = st.text_input("Mandatory Reason for Block:", key="block_reason_input")
-        
+    with t3:
+        btarget = st.selectbox("Target Player to Block/Unblock:", list(st.session_state.users.keys()), key="bsel")
+        breason = st.text_input("Reason for Block (Mandatory):", key="breas")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            if st.button("Block Target User", key="btn_exec_block"):
-                if not mandatory_reason.strip():
-                    st.error("⛔ Every block action requires a mandatory Reason for Block entry!")
-                else:
-                    target_u = st.session_state.users[block_target]
-                    target_u["status"] = "Blocked"
-                    target_u["block_reason"] = mandatory_reason.strip()
+            if st.button("Block Player", key="btn_blk"):
+                if breason.strip():
+                    u = st.session_state.users[btarget]
+                    u["status"] = "Blocked"
+                    u["block_reason"] = breason.strip()
                     save_data_to_file()
-                    st.warning(f"User @{block_target} has been blocked.")
+                    st.warning("Player blocked.")
                     st.rerun()
-                    
+                else:
+                    st.error("Block reason is mandatory!")
         with col_b2:
-            if st.button("Unblock Target User", key="btn_exec_unblock"):
-                st.session_state.users[block_target]["status"] = "Active"
+            if st.button("Unblock Player", key="btn_unblk"):
+                st.session_state.users[btarget]["status"] = "Active"
                 save_data_to_file()
-                st.success(f"User @{block_target} unblocked successfully.")
+                st.success("Player unblocked.")
                 st.rerun()
                 
-        st.divider()
         st.subheader("📜 Blocked Players List")
-        blocked_users = {u: data for u, data in st.session_state.users.items() if data.get("status") == "Blocked"}
-        if not blocked_users:
-            st.info("No blocked players found.")
-        else:
-            for bu, bdata in blocked_users.items():
-                st.error(f"🚨 **{bdata['full_name']}** (`@{bu}`) - Reason: {bdata.get('block_reason', 'N/A')}")
+        for bu, bd in st.session_state.users.items():
+            if bd.get("status") == "Blocked":
+                st.error(f"🚨 **{bd['full_name']}** (`@{bu}`) - Reason: {bd.get('block_reason')}")
 
-    with tab_stats:
-        st.subheader("Attendance, Performance Adjustments & GK Saves")
+    with t4:
+        st.subheader("⚽ Match Stats, GK Saves & Conceded Goals")
+        st.session_state.match_settings["goals_conceded"] = st.number_input("Match Goals Conceded (Team):", 0, 20, int(st.session_state.match_settings.get("goals_conceded", 0)))
         
-        col_att, col_gk = st.columns(2)
-        with col_att:
-            st.markdown("### Override Attendance")
-            att_user = st.selectbox("Select Player for Attendance:", list(st.session_state.users.keys()), key="att_u_select")
-            att_status = st.radio("Status:", ["Present", "Absent"], key="att_rad")
-            if st.button("Save Attendance", key="btn_save_att"):
-                st.session_state.player_stats[att_user]["attendance"] = att_status
-                save_data_to_file()
-                st.success(f"Attendance recorded for @{att_user}!")
-                
-        with col_gk:
-            st.markdown("### 🧤 GK Saves Tracker")
-            gk_users = [u for u, d in st.session_state.users.items() if d.get("position") == "GK"]
-            if gk_users:
-                sel_gk = st.selectbox("Select Goalkeeper:", gk_users, key="gk_select")
-                add_saves = st.number_input("Add GK Saves Count:", min_value=0, max_value=30, step=1)
-                if st.button("Save GK Stats", key="btn_save_gk"):
-                    st.session_state.player_stats[sel_gk]["gk_saves"] = st.session_state.player_stats[sel_gk].get("gk_saves", 0) + add_saves
-                    save_data_to_file()
-                    st.success(f"Updated saves for GK @{sel_gk}!")
+        stat_u = st.selectbox("Select Player:", list(st.session_state.users.keys()), key="stat_u_sel")
+        pstats = st.session_state.player_stats.setdefault(stat_u, {"goals": 0, "assists": 0, "conceded_penalty": 0.0, "attendance": "Present", "rating_penalty": 0.0, "gk_saves": 0})
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            pstats["goals"] = st.number_input("Goals:", 0, 50, int(pstats.get("goals", 0)))
+        with c2:
+            pstats["assists"] = st.number_input("Assists:", 0, 50, int(pstats.get("assists", 0)))
+        with c3:
+            pstats["gk_saves"] = st.number_input("GK Saves:", 0, 50, int(pstats.get("gk_saves", 0)))
+            
+        if st.button("Save Stats", key="btn_sav_stats"):
+            save_data_to_file()
+            st.success("Stats updated!")
 
-    with tab_reset:
-        st.subheader("Master System Reset")
-        if curr_user["role"] != "Superadmin":
-            st.error("⛔ Master Reset operation is restricted exclusively to Superadmin.")
-        else:
-            if st.button("🔥 EXECUTE MASTER RESET", key="btn_master_reset"):
+    with t5:
+        if curr_user["role"] == "Superadmin":
+            if st.button("🔥 EXECUTE MASTER RESET", key="btn_mr"):
                 st.session_state.group_chat = []
                 st.session_state.football_ai_chats = []
                 st.session_state.personal_ai_chats = {}
                 save_data_to_file()
-                st.success("Master Reset completed! All chat logs and AI conversations purged safely.")
+                st.success("Master Reset completed! Chats purged while keeping user IDs intact.")
                 st.rerun()
