@@ -401,7 +401,7 @@ if "sec_key" not in curr_user or not curr_user["sec_key"]:
 is_saturday = datetime.datetime.now().weekday() == 5  # Monday=0 ... Saturday=5, Sunday=6
 
 if is_saturday and curr_user["status"] == "Active" and curr_username not in st.session_state.match_availability_poll:
-    st.info("📅 **Saturday Pre-Match Poll:** আগামীকাল রবিবারের (Sunday Matchday) ম্যাচে কি আপনি খেলবেন?")
+    st.info("📅 **Saturday Pre-Match Poll:** আগামীকাল রবিবারের (Sunday Matchday) ম্যাচে কি তুই খেলবি?")
     col_p1, col_p2 = st.columns(2)
     with col_p1:
         if st.button("✅ Yes, I will attend", key="poll_yes"):
@@ -580,7 +580,7 @@ elif nav_choice == "🖼️ Member Photo Gallery":
                 st.caption(f"👤 **{udata['full_name']}** (@{u})")
 
 # ==========================================
-# 9. SQUAD GENERATION & TACTICS
+# 9. SQUAD GENERATION & TACTICS (WITH AUTO AI FORMATION)
 # ==========================================
 elif nav_choice == "⚽ Squad Generation & Tactics":
     st.header("⚽ Tactical Squad Generator")
@@ -608,19 +608,23 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     step=1
                 )
             with col_s2:
-                custom_formation = st.text_input("📐 Enter Team Formation (e.g., 4-3-3, 3-2-1):", value="4-3-3")
+                fmt_mode = st.radio("📐 Formation Input:", ["🤖 AI Auto-Select", "✍️ Manual Custom"], horizontal=True)
+                if fmt_mode == "✍️ Manual Custom":
+                    custom_formation = st.text_input("Enter Formation (e.g., 4-3-3):", value="4-3-3")
+                else:
+                    custom_formation = "AI Auto-Selected"
         else:
             target_count = st.session_state.match_settings.get("asmb_player_count", 11)
             custom_formation = "Adaptive Formation"
             st.info(f"Target Squad Size: **{target_count} Players**")
         
-        if curr_user["role"] in ["Superadmin", "Admin"] and st.button("Generate Match Squad", key="btn_gen_sq"):
+        if curr_user["role"] in ["Superadmin", "Admin"] and st.button("Generate Match Squad", key="btn_gen_sq", type="primary"):
             available = [u for u in active_users.keys() if u not in st.session_state.injured_players and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"]
             
-            # Rule: Positional Conflict Filter (Same position highest rated player gets priority)
+            # Positional Conflict Filter & Rating Logic
             pos_groups = {}
             for u in available:
-                pos = active_users[u]["position"]
+                pos = active_users[u].get("position", "CM")
                 pos_groups.setdefault(pos, []).append(u)
                 
             selected_squad = []
@@ -640,13 +644,34 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 
             starters = selected_squad[:target_count]
             
+            # -------------------------------------------------------------
+            # AI AUTO FORMATION LOGIC (Balanced Defense & Attack)
+            # -------------------------------------------------------------
+            if fmt_mode == "🤖 AI Auto-Select":
+                defenders_count = sum(len(pos_groups.get(p, [])) for p in ["CB", "LB", "RB"])
+                attackers_count = sum(len(pos_groups.get(p, [])) for p in ["ST", "RW", "LW", "CAM"])
+                
+                if defenders_count >= 4 and attackers_count >= 3:
+                    chosen_formation = "4-3-3 (Classic Balanced Attack & Defense)"
+                elif sum(len(pos_groups.get(p, [])) for p in ["CM", "CAM"]) >= 4:
+                    chosen_formation = "4-2-3-1 (Solid Midfield Control & Fast Counters)"
+                elif defenders_count >= 3 and attackers_count >= 4:
+                    chosen_formation = "3-5-2 (High-Pressing Attack & Wing Support)"
+                else:
+                    chosen_formation = "4-4-2 (Traditional Solid Structure)"
+            else:
+                chosen_formation = custom_formation
+
             st.markdown(f"### 🏆 Starting Lineup ({len(starters)} Players)")
-            notice_text = f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n\n**Starting Lineup:**\n"
+            st.info(f"🎯 **Tactical Formation:** `{chosen_formation}`")
+            
+            notice_text = f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n"
+            notice_text += f"**Formation:** {chosen_formation} ({len(starters)}-a-side)\n\n**Starting Lineup:**\n"
             
             for idx, p in enumerate(starters, 1):
                 r = compute_player_rating(p)
                 u = active_users[p]
-                line = f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**"
+                line = f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u.get('position', 'N/A')} | Rating: **{r}**"
                 st.markdown(line)
                 notice_text += f"{line}\n"
                 
@@ -656,12 +681,9 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 for idx, p in enumerate(subs, 1):
                     r = compute_player_rating(p)
                     u = active_users[p]
-                    line = f"Sub {idx}: **{u['full_name']}** (`@{p}`) - Pos: {u['position']} | Rating: **{r}**"
+                    line = f"Sub {idx}: **{u['full_name']}** (`@{p}`) - Pos: {u.get('position', 'N/A')} | Rating: **{r}**"
                     st.markdown(line)
                     notice_text += f"{line}\n"
-                    
-            formation = f"{custom_formation} ({len(starters)}-a-side)"
-            notice_text += f"\n**Formation:** {formation}"
             
             st.session_state.notice_board.append({
                 "id": len(st.session_state.notice_board) + 1,
@@ -674,7 +696,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             
             st.session_state.match_settings["asmb_player_count"] = target_count
             save_data_to_file()
-            st.success(f"{target_count}-a-side Squad published to Notice Board!")
+            st.success(f"✅ {target_count}-a-side Squad published to Notice Board!")
 
     # ---------------------------------------------------------
     # MODE 2: PRACTICE DAY SPLIT (TWO BALANCED TEAMS)
@@ -682,18 +704,19 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
     elif day_sel == "Practice Day Split (Mon-Thu)":
         st.subheader("🏃 Practice Match Balanced Team Generator")
         
-        # Ensure active_users is fetched
         active_users = get_active_unblocked_users()
         
         if curr_user["role"] in ["Superadmin", "Admin"]:
-            practice_formation = st.text_input(
-                "📐 Practice Tactical Formation (e.g., 3-2-1, 2-3-1):", 
-                value="Balanced Practice Formation",
-                key="input_practice_fmt"
-            )
-            
-            if st.button("Generate & Publish Balanced Teams", key="btn_gen_practice"):
-                # Filter available players (not injured & not absent)
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                p_fmt_mode = st.radio("📐 Practice Formation:", ["🤖 AI Auto-Select", "✍️ Manual Custom"], horizontal=True, key="p_fmt_radio")
+            with col_p2:
+                if p_fmt_mode == "✍️ Manual Custom":
+                    practice_formation = st.text_input("Enter Formation:", value="Balanced Practice Formation", key="input_practice_fmt")
+                else:
+                    practice_formation = "AI Adaptive Balanced Formation"
+
+            if st.button("Generate & Publish Balanced Teams", key="btn_gen_practice", type="primary"):
                 available = [
                     u for u in active_users.keys() 
                     if u not in st.session_state.injured_players 
@@ -703,13 +726,12 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 if len(available) < 2:
                     st.error("Need at least 2 active players to generate practice teams.")
                 else:
-                    # Sort players by rating descending
                     sorted_players = sorted(available, key=lambda x: compute_player_rating(x), reverse=True)
                     
                     team_tp = []
                     team_el = []
                     
-                    # Snake Draft Allocation Logic for Rating Balance (1->A, 2->B, 3->B, 4->A, 5->A, 6->B...)
+                    # Snake Draft Allocation Logic
                     for idx, p in enumerate(sorted_players):
                         if (idx // 2) % 2 == 0:
                             if idx % 2 == 0:
@@ -728,7 +750,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     avg_tp = round(sum(tp_ratings) / len(tp_ratings), 2) if tp_ratings else 0.0
                     avg_el = round(sum(el_ratings) / len(el_ratings), 2) if el_ratings else 0.0
                     
-                    # Save generated teams temporarily in session_state for display
                     st.session_state["last_practice_teams"] = {
                         "team_tp": team_tp,
                         "team_el": team_el,
@@ -737,7 +758,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                         "formation": practice_formation
                     }
                     
-                    # Prepare Notice Text for Practice Match
                     notice_text = f"### 🏃 Practice Match Teams - {datetime.date.today()}\n"
                     notice_text += f"**Formation:** {practice_formation}\n\n"
                     
@@ -751,7 +771,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                         u = active_users[p]
                         notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u.get('position', 'N/A')} ({compute_player_rating(p)})\n"
                     
-                    # Add to Notice Board
                     st.session_state.notice_board.append({
                         "id": len(st.session_state.notice_board) + 1,
                         "author": "Football AI",
@@ -765,12 +784,10 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     st.success("✅ Balanced practice teams generated & published to Notice Board!")
                     st.rerun()
 
-            # Output UI - Displays existing generated team from session state
             if "last_practice_teams" in st.session_state:
                 p_data = st.session_state["last_practice_teams"]
                 col_t1, col_t2 = st.columns(2)
                 
-                # Team TP Output
                 with col_t1:
                     st.markdown(f"### 🐯 🐅 Tigers & Panthers ({len(p_data['team_tp'])} Players)")
                     st.caption(f"Average Team Rating: **{p_data['avg_tp']}**")
@@ -779,7 +796,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                         r = compute_player_rating(p)
                         st.markdown(f"{idx}. **{u.get('full_name', p)}** (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**")
                         
-                # Team EL Output
                 with col_t2:
                     st.markdown(f"### 🦅 🦁 Eagles & Lions ({len(p_data['team_el'])} Players)")
                     st.caption(f"Average Team Rating: **{p_data['avg_el']}**")
@@ -855,12 +871,16 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
             st.success("Rating saved!")
 
 # ==========================================
-# 11. MANAGE PROFILE (WITHOUT POSITION)
+# 11. MANAGE PROFILE (EASY PIN & PASS CHANGE)
 # ==========================================
 elif nav_choice == "⚙️ Manage Profile":
     st.header("⚙️ Edit Profile")
     st.warning("🔒 Position can only be changed by Admin/Superadmin.")
     
+    # -------------------------------------------------------------
+    # 👤 SECTION 1: PERSONAL DETAILS
+    # -------------------------------------------------------------
+    st.subheader("👤 Personal Details")
     new_fn = st.text_input("Full Name:", value=curr_user["full_name"])
     new_jn = st.number_input("Jersey Number:", 1, 99, int(curr_user["jersey_num"]))
     new_jname = st.text_input("Jersey Player Name:", value=curr_user["jersey_name"])
@@ -868,16 +888,51 @@ elif nav_choice == "⚙️ Manage Profile":
     
     pic = st.file_uploader("Update Profile Photo:", type=["jpg", "png", "jpeg"])
     
-    if st.button("Save Profile Updates", key="btn_prof_save"):
+    if st.button("Save Profile Updates", key="btn_prof_save", type="primary"):
         curr_user["full_name"] = new_fn
         curr_user["jersey_num"] = new_jn
         curr_user["jersey_name"] = new_jname
         curr_user["personal_ai_name"] = new_pai
         if pic:
             curr_user["photo_b64"] = base64.b64encode(pic.read()).decode('utf-8')
+            
+        st.session_state.users[curr_user["username"]] = curr_user
         save_data_to_file()
-        st.success("Profile updated!")
+        st.success("✅ Profile updated successfully!")
         st.rerun()
+
+    st.divider()
+
+    # -------------------------------------------------------------
+    # 🔑 SECTION 2: EASY PASSWORD & PIN CHANGE (NO OLD PASS NEEDED)
+    # -------------------------------------------------------------
+    st.subheader("🔑 Security & Account Settings")
+    
+    with st.expander("🛡️ Change Password / Security PIN", expanded=True):
+        new_pass_input = st.text_input("Set New Password (নতুন পাসওয়ার্ড):", value=curr_user.get("password", ""))
+        new_pin_input = st.text_input("Set Security PIN (যেকোনো পিন):", value=curr_user.get("pin", ""))
+        
+        if st.button("💾 Save PIN & Password", key="btn_save_pin_pass", type="primary"):
+            updated = False
+            
+            # সরাসরি পাসওয়ার্ড আপডেট
+            if new_pass_input.strip():
+                curr_user["password"] = new_pass_input.strip()
+                st.session_state.users[curr_user["username"]]["password"] = new_pass_input.strip()
+                updated = True
+            
+            # যেকোনো পিন আপডেট (যেকোনো ফর্ম্যাট বা সাইজ গ্রহণযোগ্য)
+            if new_pin_input.strip():
+                curr_user["pin"] = new_pin_input.strip()
+                st.session_state.users[curr_user["username"]]["pin"] = new_pin_input.strip()
+                updated = True
+
+            if updated:
+                save_data_to_file()
+                st.success("✅ Password & PIN updated successfully!")
+                st.rerun()
+            else:
+                st.error("Please enter a valid Password or PIN.")
 
 # ==========================================
 # 12. CLUB HOUSE CHAT
@@ -987,12 +1042,13 @@ elif nav_choice == "⚙️ Admin Control Panel":
         st.error("Access Denied.")
         st.stop()
         
-    t1, t2, t3, t4, t5, t6 = st.tabs([
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs([
         "🎨 Branding & Limit", 
         "👑 Roles & Password", 
         "🚫 Block System", 
         "📊 Match Stats & GK Saves", 
         "📋 Player Attendance", 
+        "📢 Notice & Poll",
         "🧹 Master Reset"
     ])
     
@@ -1008,7 +1064,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
 
     with t2:
         target_u = st.selectbox("Select User:", list(st.session_state.users.keys()))
-        new_pos = st.selectbox("Assign Position:", ["GK", "CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"])
+        new_pos = st.selectbox("Assign Position:", ["GK", "CB", "LB", "RB", "RCM","LCM" "CAM", "RW", "LW", "ST"])
         if st.button("Update Position", key="btn_adm_pos"):
             st.session_state.users[target_u]["position"] = new_pos
             save_data_to_file()
@@ -1043,10 +1099,24 @@ elif nav_choice == "⚙️ Admin Control Panel":
                 st.success("Player unblocked.")
                 st.rerun()
                 
-        st.subheader("📜 Blocked Players List")
+        st.subheader("📜 Blocked Players List & Last Messages")
+        blocked_found = False
         for bu, bd in st.session_state.users.items():
             if bd.get("status") == "Blocked":
+                blocked_found = True
                 st.error(f"🚨 **{bd['full_name']}** (`@{bu}`) - Reason: {bd.get('block_reason')}")
+                
+                # Fetch last message sent by blocked player
+                user_msgs = [msg for msg in st.session_state.get("group_chat", []) if msg.get("sender") == bu]
+                if user_msgs:
+                    last_msg = user_msgs[-1]
+                    st.info(f"💬 **Last Message:** \"{last_msg.get('text', '')}\" — *(Sent at {last_msg.get('timestamp', 'N/A')})*")
+                else:
+                    st.caption("💬 No messages found from this user.")
+                st.divider()
+                
+        if not blocked_found:
+            st.info("No blocked players currently.")
 
     with t4:
         st.subheader("⚽ Match Stats, GK Saves & Conceded Goals")
@@ -1067,9 +1137,6 @@ elif nav_choice == "⚙️ Admin Control Panel":
             save_data_to_file()
             st.success("Stats updated!")
 
-    # -------------------------------------------------------------
-    # 📋 TAB 5: PLAYER ATTENDANCE MANAGEMENT
-    # -------------------------------------------------------------
     with t5:
         st.subheader("📋 Daily Player Attendance Sheet")
         st.caption(f"📅 Date: **{datetime.date.today().strftime('%B %d, %Y')}**")
@@ -1082,7 +1149,6 @@ elif nav_choice == "⚙️ Admin Control Panel":
             with st.form("admin_tab_attendance_form"):
                 updated_attendance = {}
                 
-                # Table Header
                 h_c1, h_c2, h_c3 = st.columns([3, 2, 4])
                 with h_c1:
                     st.markdown("**Player Name**")
@@ -1093,7 +1159,6 @@ elif nav_choice == "⚙️ Admin Control Panel":
                 
                 st.divider()
                 
-                # Player Rows
                 for username, user_info in active_users.items():
                     col1, col2, col3 = st.columns([3, 2, 4])
                     
@@ -1123,7 +1188,6 @@ elif nav_choice == "⚙️ Admin Control Panel":
                             st.session_state.player_stats[username] = {}
                         st.session_state.player_stats[username]["attendance"] = status
                         
-                        # Auto-update Injured players list
                         if status == "Injured":
                             if username not in st.session_state.injured_players:
                                 st.session_state.injured_players.append(username)
@@ -1136,9 +1200,63 @@ elif nav_choice == "⚙️ Admin Control Panel":
                     st.rerun()
 
     # -------------------------------------------------------------
-    # 🧹 TAB 6: MASTER RESET
+    # 📢 TAB 6: NOTICE & POLL GENERATOR
     # -------------------------------------------------------------
     with t6:
+        st.subheader("📌 Admin Announcement & Voting Tool")
+        
+        action_type = st.radio("Select Action:", ["Create Notice", "Create Poll"], horizontal=True, key="admin_notice_poll_radio")
+        
+        if action_type == "Create Notice":
+            with st.form("admin_create_notice_form"):
+                n_title = st.text_input("Notice Title:")
+                n_content = st.text_area("Notice Details:")
+                
+                if st.form_submit_button("📢 Publish Notice", type="primary"):
+                    if n_title.strip() and n_content.strip():
+                        st.session_state.notice_board.append({
+                            "id": len(st.session_state.notice_board) + 1,
+                            "author": f"{curr_user['full_name']} ({curr_user['role']})",
+                            "title": n_title.strip(),
+                            "content": n_content.strip(),
+                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "comments": []
+                        })
+                        save_data_to_file()
+                        st.success("✅ Notice successfully published to Notice Board!")
+                        st.rerun()
+                    else:
+                        st.error("Please fill in both title and content.")
+
+        elif action_type == "Create Poll":
+            with st.form("admin_create_poll_form"):
+                p_question = st.text_input("Poll Question / Title:")
+                p_options_raw = st.text_area("Options (Enter each option on a new line):", value="Yes\nNo")
+                
+                if st.form_submit_button("📊 Publish Poll", type="primary"):
+                    options = [opt.strip() for opt in p_options_raw.split("\n") if opt.strip()]
+                    if p_question.strip() and len(options) >= 2:
+                        poll_content = f"### 📊 POLL: {p_question.strip()}\n\n"
+                        for idx, opt in enumerate(options, 1):
+                            poll_content += f"{idx}. {opt}\n"
+                        
+                        st.session_state.notice_board.append({
+                            "id": len(st.session_state.notice_board) + 1,
+                            "author": f"{curr_user['full_name']} ({curr_user['role']})",
+                            "title": f"📊 Poll: {p_question.strip()}",
+                            "content": poll_content,
+                            "poll_options": options,
+                            "poll_votes": {},
+                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                            "comments": []
+                        })
+                        save_data_to_file()
+                        st.success("✅ Poll successfully published to Notice Board!")
+                        st.rerun()
+                    else:
+                        st.error("Please provide a question and at least 2 options.")
+
+    with t7:
         if curr_user["role"] == "Superadmin":
             if st.button("🔥 EXECUTE MASTER RESET", key="btn_mr"):
                 st.session_state.group_chat = []
