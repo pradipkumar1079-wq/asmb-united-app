@@ -1072,7 +1072,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
 
     with t2:
         target_u = st.selectbox("Select User:", list(st.session_state.users.keys()))
-        new_pos = st.selectbox("Assign Position:", ["GK", "CB", "LB", "RB", "RCM","LCM" "CAM", "RW", "LW", "ST"])
+        new_pos = st.selectbox("Assign Position:", ["GK", "CB", "LB", "RB", "RCM","LCM","CAM", "RW", "LW", "ST"])
         if st.button("Update Position", key="btn_adm_pos"):
             st.session_state.users[target_u]["position"] = new_pos
             save_data_to_file()
