@@ -871,7 +871,7 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
             st.success("Rating saved!")
 
 # ==========================================
-# 11. MANAGE PROFILE (EASY PIN & PASS CHANGE)
+# 11. MANAGE PROFILE (EASY PIN & PASS CHANGE - SAFE & FIXED)
 # ==========================================
 elif nav_choice == "⚙️ Manage Profile":
     st.header("⚙️ Edit Profile")
@@ -881,10 +881,10 @@ elif nav_choice == "⚙️ Manage Profile":
     # 👤 SECTION 1: PERSONAL DETAILS
     # -------------------------------------------------------------
     st.subheader("👤 Personal Details")
-    new_fn = st.text_input("Full Name:", value=curr_user["full_name"])
-    new_jn = st.number_input("Jersey Number:", 1, 99, int(curr_user["jersey_num"]))
-    new_jname = st.text_input("Jersey Player Name:", value=curr_user["jersey_name"])
-    new_pai = st.text_input("Personal AI Name:", value=curr_user["personal_ai_name"])
+    new_fn = st.text_input("Full Name:", value=curr_user.get("full_name", ""))
+    new_jn = st.number_input("Jersey Number:", 1, 99, int(curr_user.get("jersey_num", 1)))
+    new_jname = st.text_input("Jersey Player Name:", value=curr_user.get("jersey_name", ""))
+    new_pai = st.text_input("Personal AI Name:", value=curr_user.get("personal_ai_name", ""))
     
     pic = st.file_uploader("Update Profile Photo:", type=["jpg", "png", "jpeg"])
     
@@ -893,10 +893,15 @@ elif nav_choice == "⚙️ Manage Profile":
         curr_user["jersey_num"] = new_jn
         curr_user["jersey_name"] = new_jname
         curr_user["personal_ai_name"] = new_pai
+        
         if pic:
             curr_user["photo_b64"] = base64.b64encode(pic.read()).decode('utf-8')
             
-        st.session_state.users[curr_user["username"]] = curr_user
+        # Safe session storage sync to prevent KeyError
+        uname = curr_user.get("username")
+        if uname and "users" in st.session_state and uname in st.session_state.users:
+            st.session_state.users[uname] = curr_user
+            
         save_data_to_file()
         st.success("✅ Profile updated successfully!")
         st.rerun()
@@ -904,27 +909,30 @@ elif nav_choice == "⚙️ Manage Profile":
     st.divider()
 
     # -------------------------------------------------------------
-    # 🔑 SECTION 2: EASY PASSWORD & PIN CHANGE (NO OLD PASS NEEDED)
+    # 🔑 SECTION 2: EASY PASSWORD & PIN CHANGE
     # -------------------------------------------------------------
     st.subheader("🔑 Security & Account Settings")
     
     with st.expander("🛡️ Change Password / Security PIN", expanded=True):
-        new_pass_input = st.text_input("Set New Password (নতুন পাসওয়ার্ড):", value=curr_user.get("password", ""))
+        new_pass_input = st.text_input("Set New Password (নতুন পাসওয়ার্ড):", value=curr_user.get("password", ""), type="password")
         new_pin_input = st.text_input("Set Security PIN (যেকোনো পিন):", value=curr_user.get("pin", ""))
         
         if st.button("💾 Save PIN & Password", key="btn_save_pin_pass", type="primary"):
             updated = False
+            uname = curr_user.get("username")
             
-            # সরাসরি পাসওয়ার্ড আপডেট
+            # 1. পাসওয়ার্ড নিরাপদ আপডেট
             if new_pass_input.strip():
                 curr_user["password"] = new_pass_input.strip()
-                st.session_state.users[curr_user["username"]]["password"] = new_pass_input.strip()
+                if uname and "users" in st.session_state and uname in st.session_state.users:
+                    st.session_state.users[uname]["password"] = new_pass_input.strip()
                 updated = True
             
-            # যেকোনো পিন আপডেট (যেকোনো ফর্ম্যাট বা সাইজ গ্রহণযোগ্য)
+            # 2. সিকিউরিটি পিন নিরাপদ আপডেট
             if new_pin_input.strip():
                 curr_user["pin"] = new_pin_input.strip()
-                st.session_state.users[curr_user["username"]]["pin"] = new_pin_input.strip()
+                if uname and "users" in st.session_state and uname in st.session_state.users:
+                    st.session_state.users[uname]["pin"] = new_pin_input.strip()
                 updated = True
 
             if updated:
