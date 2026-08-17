@@ -264,7 +264,7 @@ def login_register_surface():
     
     if st.session_state.app_settings.get("club_photo_b64"):
         try:
-            img_bytes = base64.b64decode(st.session_state.app_settings["club_photo_b64"])
+            img_bytes = base64.b64encode(st.session_state.app_settings["club_photo_b64"])
             st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True)
         except Exception:
             pass
@@ -279,7 +279,7 @@ def login_register_surface():
         if st.button("Login", key="btn_login"):
             if login_username in st.session_state.users:
                 user = st.session_state.users[login_username]
-                if user["password"] == login_password:
+                if user.get("password") == login_password:
                     st.session_state.authenticated_user = login_username
                     st.success(f"Welcome back, {user['full_name']}!")
                     st.rerun()
@@ -334,7 +334,7 @@ def login_register_surface():
             
             st.session_state.users[reg_username] = {
                 "password": reg_password,
-                "sec_key": reg_sec_key,
+                "sec_key": reg_sec_key.strip(),
                 "full_name": reg_full_name,
                 "jersey_num": reg_jersey_num,
                 "jersey_name": reg_jersey_name,
@@ -357,18 +357,24 @@ def login_register_surface():
     with tab3:
         st.subheader("🔑 Forget Password Reset")
         fp_uname = st.text_input("Enter Username:", key="fp_uname").strip()
-        fp_sec_key = st.text_input("Enter Security Key:", key="fp_sec_key", type="password")
-        fp_new_pass = st.text_input("Enter New Password:", key="fp_new_pass", type="password")
+        fp_sec_key = st.text_input("Enter Security Key:", key="fp_sec_key", type="password").strip()
+        fp_new_pass = st.text_input("Enter New Password:", key="fp_new_pass", type="password").strip()
         
         if st.button("Reset Password", key="btn_fp_reset"):
-            if fp_uname in st.session_state.users:
+            if not fp_uname or not fp_sec_key or not fp_new_pass:
+                st.error("Please fill in all fields (Username, Security Key, New Password)!")
+            elif fp_uname in st.session_state.users:
                 u = st.session_state.users[fp_uname]
-                if u.get("sec_key") == fp_sec_key and fp_sec_key.strip():
+                stored_sec_key = str(u.get("sec_key", "")).strip()
+                
+                if stored_sec_key and stored_sec_key == fp_sec_key:
                     u["password"] = fp_new_pass
                     save_data_to_file()
                     st.success("Password successfully updated! Please login with your new password.")
+                elif not stored_sec_key:
+                    st.error("Security Key not set for this user. Contact Admin!")
                 else:
-                    st.error("Incorrect Security Key or not set!")
+                    st.error("Incorrect Security Key!")
             else:
                 st.error("Username not found!")
 
@@ -580,7 +586,7 @@ elif nav_choice == "🖼️ Member Photo Gallery":
                 st.caption(f"👤 **{udata['full_name']}** (@{u})")
 
 # ==========================================
-# 9. SQUAD GENERATION & TACTICS (WITH AUTO AI FORMATION)
+# 9. SQUAD GENERATION & TACTICS (WITH AUTO AI FORMATION & VISUAL LAYOUT)
 # ==========================================
 elif nav_choice == "⚽ Squad Generation & Tactics":
     st.header("⚽ Tactical Squad Generator")
@@ -593,6 +599,28 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
     active_users = get_active_unblocked_users()
     max_avail = len(active_users)
     
+    # Helper function for visual box creation
+    def generate_visual_formation_box(gk_name, field_dict):
+        def get_p(pos_key):
+            return field_dict.get(pos_key, "Vacant")
+
+        box = f"""
+               [ 🧤 গোলরক্ষক (GK): {gk_name} ]
+                               |
++---------------------------------------------------------------------------------+
+| (LB): {get_p('LB')} | (LCB): {get_p('LCB')} | (RCB): {get_p('RCB')} | (RB): {get_p('RB')} | <-- ৪ জন ডিফেন্ডার
++---------------------------------------------------------------------------------+
+                               |
+       +-----------------------------------------------------------+
+       | (LCM): {get_p('LCM')} | (CM): {get_p('CM')} | (RCM): {get_p('RCM')} | <-- ৩ জন মিডফিল্ডার
+       +-----------------------------------------------------------+
+                               |
+                      +------------------+
+                      | (LS): {get_p('LS')} | (RS): {get_p('RS')} | <-- ২ জন স্ট্রাইকার
+                      +------------------+
+        """
+        return box
+
     # ---------------------------------------------------------
     # MODE 1: SATURDAY MATCH SQUAD
     # ---------------------------------------------------------
@@ -601,94 +629,120 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             col_s1, col_s2 = st.columns(2)
             with col_s1:
                 target_count = st.number_input(
-                    "🔢 Select Squad Size (Starters):", 
+                    "🔢 Select Field Squad Size (Starters):", 
                     min_value=1, 
                     max_value=max_avail if max_avail > 0 else 11, 
-                    value=min(11, max_avail if max_avail > 0 else 11),
+                    value=min(10, max_avail if max_avail > 0 else 10), # Field players excluding GK
                     step=1
                 )
             with col_s2:
                 fmt_mode = st.radio("📐 Formation Input:", ["🤖 AI Auto-Select", "✍️ Manual Custom"], horizontal=True)
                 if fmt_mode == "✍️ Manual Custom":
-                    custom_formation = st.text_input("Enter Formation (e.g., 4-3-3):", value="4-3-3")
+                    custom_formation = st.text_input("Enter Formation (e.g., 4-3-2):", value="4-3-2")
                 else:
-                    custom_formation = "AI Auto-Selected"
+                    custom_formation = "AI Auto-Selected (4-3-2 Standard)"
         else:
-            target_count = st.session_state.match_settings.get("asmb_player_count", 11)
+            target_count = st.session_state.match_settings.get("asmb_player_count", 10)
             custom_formation = "Adaptive Formation"
-            st.info(f"Target Squad Size: **{target_count} Players**")
+            st.info(f"Target Squad Size: **{target_count} Field Players + GK**")
         
         if curr_user["role"] in ["Superadmin", "Admin"] and st.button("Generate Match Squad", key="btn_gen_sq", type="primary"):
             available = [u for u in active_users.keys() if u not in st.session_state.injured_players and st.session_state.player_stats.get(u, {}).get("attendance") != "Absent"]
             
-            # Positional Conflict Filter & Rating Logic
-            pos_groups = {}
-            for u in available:
-                pos = active_users[u].get("position", "CM")
-                pos_groups.setdefault(pos, []).append(u)
-                
-            selected_squad = []
-            for pos, plist in pos_groups.items():
-                plist_sorted = sorted(plist, key=lambda x: compute_player_rating(x), reverse=True)
-                selected_squad.append(plist_sorted[0])  # Take highest rated per position
-                
-            rem_players = [u for u in available if u not in selected_squad]
-            rem_players_sorted = sorted(rem_players, key=lambda x: compute_player_rating(x), reverse=True)
+            # 1. Separate Goalkeepers (GK) & Field Players
+            gk_candidates = [u for u in available if active_users[u].get("position") == "GK"]
+            field_candidates = [u for u in available if active_users[u].get("position") != "GK"]
             
-            needed = target_count - len(selected_squad)
-            if needed > 0:
-                selected_squad.extend(rem_players_sorted[:needed])
-                subs = rem_players_sorted[needed:]
-            else:
-                subs = rem_players_sorted
-                
-            starters = selected_squad[:target_count]
-            
-            # -------------------------------------------------------------
-            # AI AUTO FORMATION LOGIC (Balanced Defense & Attack)
-            # -------------------------------------------------------------
-            if fmt_mode == "🤖 AI Auto-Select":
-                defenders_count = sum(len(pos_groups.get(p, [])) for p in ["CB", "LB", "RB"])
-                attackers_count = sum(len(pos_groups.get(p, [])) for p in ["ST", "RW", "LW", "CAM"])
-                
-                if defenders_count >= 4 and attackers_count >= 3:
-                    chosen_formation = "4-3-3 (Classic Balanced Attack & Defense)"
-                elif sum(len(pos_groups.get(p, [])) for p in ["CM", "CAM"]) >= 4:
-                    chosen_formation = "4-2-3-1 (Solid Midfield Control & Fast Counters)"
-                elif defenders_count >= 3 and attackers_count >= 4:
-                    chosen_formation = "3-5-2 (High-Pressing Attack & Wing Support)"
-                else:
-                    chosen_formation = "4-4-2 (Traditional Solid Structure)"
-            else:
-                chosen_formation = custom_formation
+            # GK Selection
+            gk_player = None
+            if gk_candidates:
+                gk_candidates_sorted = sorted(gk_candidates, key=lambda x: compute_player_rating(x), reverse=True)
+                gk_player = gk_candidates_sorted[0]
+            elif available:
+                # Fallback if no specific GK exists
+                sorted_all = sorted(available, key=lambda x: compute_player_rating(x), reverse=True)
+                gk_player = sorted_all[0]
+                field_candidates = [u for u in available if u != gk_player]
 
-            st.markdown(f"### 🏆 Starting Lineup ({len(starters)} Players)")
+            gk_name = f"{active_users[gk_player]['full_name']} (@{gk_player})" if gk_player else "No GK Assigned"
+            
+            # 2. Sort field players by rating (Top ones play in starting XI, lower rated go to subs)
+            field_sorted = sorted(field_candidates, key=lambda x: compute_player_rating(x), reverse=True)
+            
+            starters_field = field_sorted[:target_count]
+            subs = field_sorted[target_count:]
+            
+            # 3. Position Map Assignment for Visual Board (4-3-2 Standard Layout)
+            pos_slots = ["LB", "LCB", "RCB", "RB", "LCM", "CM", "RCM", "LS", "RS"]
+            assigned_positions = {}
+            
+            for idx, p_uname in enumerate(starters_field):
+                slot_name = pos_slots[idx] if idx < len(pos_slots) else f"SUB_POS_{idx+1}"
+                u_info = active_users[p_uname]
+                assigned_positions[slot_name] = f"{u_info['full_name']} ({compute_player_rating(p_uname)})"
+            
+            chosen_formation = custom_formation if fmt_mode == "✍️ Manual Custom" else "4-3-2 Tactical Setup"
+
+            # Display Formation Details
+            st.markdown(f"### 🏆 Starting Lineup & Tactical Formation")
             st.info(f"🎯 **Tactical Formation:** `{chosen_formation}`")
+            st.success(f"🧤 **Main Goalkeeper (GK):** {gk_name}")
+            
+            # ASCII Visual Box Display
+            st.markdown("#### 🏟️ Pitch Position Diagram:")
+            visual_box_str = generate_visual_formation_box(gk_name, assigned_positions)
+            st.code(visual_box_str, language="text")
             
             notice_text = f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n"
-            notice_text += f"**Formation:** {chosen_formation} ({len(starters)}-a-side)\n\n**Starting Lineup:**\n"
+            notice_text += f"**Formation:** {chosen_formation}\n"
+            notice_text += f"**🧤 GK:** {gk_name}\n\n"
+            notice_text += f"**🏟️ Starting Field Lineup ({len(starters_field)} Players):**\n"
             
-            for idx, p in enumerate(starters, 1):
-                r = compute_player_rating(p)
-                u = active_users[p]
-                line = f"{idx}. **{u['full_name']}** (`@{p}`) - Pos: {u.get('position', 'N/A')} | Rating: **{r}**"
+            for slot, p_det in assigned_positions.items():
+                line = f"* **[{slot}]**: {p_det}"
                 st.markdown(line)
                 notice_text += f"{line}\n"
                 
-            if subs:
-                st.markdown(f"### 🔄 Substitutes ({len(subs)} Players)")
-                notice_text += f"\n**Substitutes:**\n"
-                for idx, p in enumerate(subs, 1):
-                    r = compute_player_rating(p)
-                    u = active_users[p]
-                    line = f"Sub {idx}: **{u['full_name']}** (`@{p}`) - Pos: {u.get('position', 'N/A')} | Rating: **{r}**"
-                    st.markdown(line)
-                    notice_text += f"{line}\n"
+            # 4. Timed Substitutions Schedule (10:15 AM - 11:00 AM)
+            st.markdown("---")
+            st.markdown("### 🔄 Substitution Plan & Time Schedule (10:15 AM - 11:00 AM)")
             
+            notice_text += f"\n**🔄 Substitution Schedule (10:15 - 11:00 AM without break):**\n"
+            
+            if subs:
+                # Split 45 minutes match (10:15 - 11:00) dynamically based on number of subs
+                start_time = datetime.datetime.strptime("10:15", "%H:%M")
+                match_duration = 45 # Minutes
+                
+                interval = match_duration // (len(subs) + 1)
+                
+                # Lowest rated starters get replaced first
+                starters_to_replace = list(reversed(starters_field))
+                
+                for idx, sub_p in enumerate(subs):
+                    sub_time = start_time + datetime.timedelta(minutes=interval * (idx + 1))
+                    time_str = sub_time.strftime("%I:%M %p")
+                    
+                    sub_user = active_users[sub_p]
+                    replaced_p = starters_to_replace[idx % len(starters_to_replace)]
+                    replaced_user = active_users[replaced_p]
+                    
+                    sub_msg = (
+                        f"⏰ **সময় {time_str}:** "
+                        f"মাঠে নামবেন ➡️ **{sub_user['full_name']}** (`@{sub_p}` | Rating: {compute_player_rating(sub_p)}) "
+                        f"| মাঠ ছাড়বেন ⬅️ **{replaced_user['full_name']}** (`@{replaced_p}`)"
+                    )
+                    st.warning(sub_msg)
+                    notice_text += f"* {sub_msg}\n"
+            else:
+                st.info("ℹ️ No substitute players available. Starting XI will play full match.")
+                notice_text += "* No substitutes available.\n"
+            
+            # Notice Board Publish
             st.session_state.notice_board.append({
                 "id": len(st.session_state.notice_board) + 1,
-                "author": "Football AI",
-                "title": f"Match Squad ({target_count}-a-side)",
+                "author": "Football AI Generator",
+                "title": f"Match Squad Lineup & Sub Schedule ({datetime.date.today()})",
                 "content": notice_text,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "comments": []
@@ -696,7 +750,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             
             st.session_state.match_settings["asmb_player_count"] = target_count
             save_data_to_file()
-            st.success(f"✅ {target_count}-a-side Squad published to Notice Board!")
+            st.success("✅ Match Squad and Substitution Schedule published to Notice Board!")
 
     # ---------------------------------------------------------
     # MODE 2: PRACTICE DAY SPLIT (TWO BALANCED TEAMS)
@@ -731,7 +785,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     team_tp = []
                     team_el = []
                     
-                    # Snake Draft Allocation Logic
+                    # Snake Draft Allocation Logic for equal team strength
                     for idx, p in enumerate(sorted_players):
                         if (idx // 2) % 2 == 0:
                             if idx % 2 == 0:
@@ -773,7 +827,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     
                     st.session_state.notice_board.append({
                         "id": len(st.session_state.notice_board) + 1,
-                        "author": "Football AI",
+                        "author": "Football AI Generator",
                         "title": f"Practice Match Split ({len(available)} Players)",
                         "content": notice_text,
                         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -1207,68 +1261,76 @@ elif nav_choice == "⚙️ Admin Control Panel":
                     st.success("✅ Attendance updated successfully!")
                     st.rerun()
 
-    # -------------------------------------------------------------
-    # 📢 TAB 6: NOTICE & POLL GENERATOR
-    # -------------------------------------------------------------
-    with t6:
-        st.subheader("📌 Admin Announcement & Voting Tool")
-        
-        action_type = st.radio("Select Action:", ["Create Notice", "Create Poll"], horizontal=True, key="admin_notice_poll_radio")
-        
-        if action_type == "Create Notice":
-            with st.form("admin_create_notice_form"):
-                n_title = st.text_input("Notice Title:")
-                n_content = st.text_area("Notice Details:")
-                
-                if st.form_submit_button("📢 Publish Notice", type="primary"):
-                    if n_title.strip() and n_content.strip():
-                        st.session_state.notice_board.append({
-                            "id": len(st.session_state.notice_board) + 1,
-                            "author": f"{curr_user['full_name']} ({curr_user['role']})",
-                            "title": n_title.strip(),
-                            "content": n_content.strip(),
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            "comments": []
-                        })
-                        save_data_to_file()
-                        st.success("✅ Notice successfully published to Notice Board!")
-                        st.rerun()
-                    else:
-                        st.error("Please fill in both title and content.")
-
-        elif action_type == "Create Poll":
-            with st.form("admin_create_poll_form"):
-                p_question = st.text_input("Poll Question / Title:")
-                p_options_raw = st.text_area("Options (Enter each option on a new line):", value="Yes\nNo")
-                
-                if st.form_submit_button("📊 Publish Poll", type="primary"):
-                    options = [opt.strip() for opt in p_options_raw.split("\n") if opt.strip()]
-                    if p_question.strip() and len(options) >= 2:
-                        poll_content = f"### 📊 POLL: {p_question.strip()}\n\n"
-                        for idx, opt in enumerate(options, 1):
-                            poll_content += f"{idx}. {opt}\n"
+# ==========================================
+# 📢 TAB 6: NOTICE & POLL GENERATOR (FIXED)
+# ==========================================
+with t6:
+    st.subheader("📌 Admin Announcement & Voting Tool")
+    
+    action_type = st.radio("Select Action:", ["Create Notice", "Create Poll"], horizontal=True, key="admin_notice_poll_radio")
+    
+    if action_type == "Create Notice":
+        with st.form("admin_create_notice_form"):
+            n_title = st.text_input("Notice Title:")
+            n_content = st.text_area("Notice Details:")
+            
+            if st.form_submit_button("📢 Publish Notice", type="primary"):
+                if n_title.strip() and n_content.strip():
+                    if "notice_board" not in st.session_state:
+                        st.session_state.notice_board = []
                         
-                        st.session_state.notice_board.append({
-                            "id": len(st.session_state.notice_board) + 1,
-                            "author": f"{curr_user['full_name']} ({curr_user['role']})",
-                            "title": f"📊 Poll: {p_question.strip()}",
-                            "content": poll_content,
-                            "poll_options": options,
-                            "poll_votes": {},
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            "comments": []
-                        })
-                        save_data_to_file()
-                        st.success("✅ Poll successfully published to Notice Board!")
-                        st.rerun()
-                    else:
-                        st.error("Please provide a question and at least 2 options.")
+                    st.session_state.notice_board.append({
+                        "id": len(st.session_state.notice_board) + 1,
+                        "author": f"{curr_user['full_name']} ({curr_user['role']})",
+                        "title": n_title.strip(),
+                        "content": n_content.strip(),
+                        "is_poll": False,
+                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "comments": []
+                    })
+                    save_data_to_file()
+                    st.success("✅ Notice successfully published to Notice Board!")
+                    st.rerun()
+                else:
+                    st.error("Please fill in both title and content.")
 
-    with t7:
-        if curr_user["role"] == "Superadmin":
-            if st.button("🔥 EXECUTE MASTER RESET", key="btn_mr"):
-                st.session_state.group_chat = []
-                st.session_state.football_ai_chats = []
+    elif action_type == "Create Poll":
+        with st.form("admin_create_poll_form"):
+            p_question = st.text_input("Poll Question / Title:")
+            p_options_raw = st.text_area("Options (Enter each option on a new line):", value="Yes\nNo")
+            
+            if st.form_submit_button("📊 Publish Poll", type="primary"):
+                options = [opt.strip() for opt in p_options_raw.split("\n") if opt.strip()]
+                if p_question.strip() and len(options) >= 2:
+                    if "notice_board" not in st.session_state:
+                        st.session_state.notice_board = []
+                        
+                    st.session_state.notice_board.append({
+                        "id": len(st.session_state.notice_board) + 1,
+                        "author": f"{curr_user['full_name']} ({curr_user['role']})",
+                        "title": f"📊 Poll: {p_question.strip()}",
+                        "content": p_question.strip(),
+                        "is_poll": True,
+                        "poll_options": options,
+                        "poll_votes": {},  # {username: selected_option}
+                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "comments": []
+                    })
+                    save_data_to_file()
+                    st.success("✅ Poll successfully published to Notice Board!")
+                    st.rerun()
+                else:
+                    st.error("Please provide a question and at least 2 options.")
+
+with t7:
+    if curr_user["role"] == "Superadmin":
+        if st.button("🔥 EXECUTE MASTER RESET", key="btn_mr"):
+            st.session_state.group_chat = []
+            st.session_state.football_ai_chats = []
+            st.session_state.personal_ai_chats = {}
+            save_data_to_file()
+            st.success("Master Reset completed!")
+            st.rerun()
                 st.session_state.personal_ai_chats = {}
                 save_data_to_file()
                 st.success("Master Reset completed! Chats purged while keeping user IDs intact.")
