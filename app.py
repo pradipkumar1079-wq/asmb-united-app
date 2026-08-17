@@ -482,7 +482,7 @@ if curr_user["status"] == "Blocked":
     st.stop()
 
 # ==========================================
-# 6. NOTICE BOARD & COMMENTS
+# 6. NOTICE BOARD & COMMENTS (WITH POLL VOTE)
 # ==========================================
 if nav_choice == "📌 Notice Board & News":
     st.header("📌 Official Notice Board")
@@ -494,11 +494,47 @@ if nav_choice == "📌 Notice Board & News":
             with st.expander(f"📢 {notice['title']} - {notice['timestamp']} (By: {notice['author']})", expanded=(idx==0)):
                 st.markdown(notice['content'])
                 
+                # 📊 Poll Voting Section
+                if notice.get("poll_options"):
+                    st.markdown("---")
+                    st.markdown("#### 🗳️ Cast Your Vote")
+                    
+                    options = notice.get("poll_options", [])
+                    votes = notice.setdefault("poll_votes", {})  # {username: selected_option}
+                    
+                    # Get existing vote of current user
+                    current_vote = votes.get(st.session_state.authenticated_user)
+                    default_index = options.index(current_vote) if current_vote in options else 0
+                    
+                    selected_option = st.radio(
+                        "Select an option:",
+                        options=options,
+                        index=default_index,
+                        key=f"poll_select_{notice['id']}"
+                    )
+                    
+                    if st.button("Submit Vote", key=f"btn_vote_{notice['id']}", type="primary"):
+                        votes[st.session_state.authenticated_user] = selected_option
+                        save_data_to_file()
+                        st.success(f"✅ Vote for '{selected_option}' submitted!")
+                        st.rerun()
+                    
+                    # 📈 Live Results Display
+                    st.markdown("##### 📊 Live Poll Results")
+                    total_votes = len(votes)
+                    if total_votes > 0:
+                        for opt in options:
+                            count = list(votes.values()).count(opt)
+                            pct = (count / total_votes) * 100
+                            st.write(f"**{opt}** — {count} vote(s) ({pct:.1f}%)")
+                            st.progress(pct / 100)
+                    else:
+                        st.info("No votes cast yet. Be the first to vote!")
+                
                 # 🗑️ Superadmin / Admin Delete Button Section
                 if curr_user.get("role") in ["Superadmin", "Admin"]:
                     st.markdown("---")
                     if st.button("🗑️ Delete This Notice", key=f"del_notice_{notice['id']}", type="secondary"):
-                        # Remove notice from session state
                         st.session_state.notice_board = [
                             n for n in st.session_state.notice_board if n["id"] != notice["id"]
                         ]
@@ -506,6 +542,7 @@ if nav_choice == "📌 Notice Board & News":
                         st.success("Notice deleted successfully!")
                         st.rerun()
                 
+                # 💬 Comments Section
                 st.markdown("---")
                 st.markdown("##### 💬 Comments")
                 comments = notice.get("comments", [])
@@ -523,7 +560,7 @@ if nav_choice == "📌 Notice Board & News":
                         })
                         save_data_to_file()
                         st.rerun()
-            
+                        
 # ==========================================
 # 7. PLAYER DIRECTORY & SPECIAL ROSTERS
 # ==========================================
@@ -1261,73 +1298,73 @@ elif nav_choice == "⚙️ Admin Control Panel":
                     st.success("✅ Attendance updated successfully!")
                     st.rerun()
 
-# ==========================================
-# 📢 TAB 6: NOTICE & POLL GENERATOR (FIXED)
-# ==========================================
-with t6:
-    st.subheader("📌 Admin Announcement & Voting Tool")
-    
-    action_type = st.radio("Select Action:", ["Create Notice", "Create Poll"], horizontal=True, key="admin_notice_poll_radio")
-    
-    if action_type == "Create Notice":
-        with st.form("admin_create_notice_form"):
-            n_title = st.text_input("Notice Title:")
-            n_content = st.text_area("Notice Details:")
-            
-            if st.form_submit_button("📢 Publish Notice", type="primary"):
-                if n_title.strip() and n_content.strip():
-                    if "notice_board" not in st.session_state:
-                        st.session_state.notice_board = []
+                    # ==========================================
+                    # 📢 TAB 6: NOTICE & POLL GENERATOR (FIXED)
+                    # ==========================================
+                    with t6:
+                        st.subheader("📌 Admin Announcement & Voting Tool")
                         
-                    st.session_state.notice_board.append({
-                        "id": len(st.session_state.notice_board) + 1,
-                        "author": f"{curr_user['full_name']} ({curr_user['role']})",
-                        "title": n_title.strip(),
-                        "content": n_content.strip(),
-                        "is_poll": False,
-                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "comments": []
-                    })
-                    save_data_to_file()
-                    st.success("✅ Notice successfully published to Notice Board!")
-                    st.rerun()
-                else:
-                    st.error("Please fill in both title and content.")
-
-    elif action_type == "Create Poll":
-        with st.form("admin_create_poll_form"):
-            p_question = st.text_input("Poll Question / Title:")
-            p_options_raw = st.text_area("Options (Enter each option on a new line):", value="Yes\nNo")
-            
-            if st.form_submit_button("📊 Publish Poll", type="primary"):
-                options = [opt.strip() for opt in p_options_raw.split("\n") if opt.strip()]
-                if p_question.strip() and len(options) >= 2:
-                    if "notice_board" not in st.session_state:
-                        st.session_state.notice_board = []
+                        action_type = st.radio("Select Action:", ["Create Notice", "Create Poll"], horizontal=True, key="admin_notice_poll_radio")
                         
-                    st.session_state.notice_board.append({
-                        "id": len(st.session_state.notice_board) + 1,
-                        "author": f"{curr_user['full_name']} ({curr_user['role']})",
-                        "title": f"📊 Poll: {p_question.strip()}",
-                        "content": p_question.strip(),
-                        "is_poll": True,
-                        "poll_options": options,
-                        "poll_votes": {},  # {username: selected_option}
-                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "comments": []
-                    })
-                    save_data_to_file()
-                    st.success("✅ Poll successfully published to Notice Board!")
-                    st.rerun()
-                else:
-                    st.error("Please provide a question and at least 2 options.")
-
-with t7:
-    if curr_user["role"] == "Superadmin":
-        if st.button("🔥 EXECUTE MASTER RESET", key="btn_mr"):
-            st.session_state.group_chat = []
-            st.session_state.football_ai_chats = []
-            st.session_state.personal_ai_chats = {}
-            save_data_to_file()
-            st.success("Master Reset completed! Chats purged while keeping user IDs intact.")
-            st.rerun()
+                        if action_type == "Create Notice":
+                            with st.form("admin_create_notice_form"):
+                                n_title = st.text_input("Notice Title:")
+                                n_content = st.text_area("Notice Details:")
+                                
+                                if st.form_submit_button("📢 Publish Notice", type="primary"):
+                                    if n_title.strip() and n_content.strip():
+                                        if "notice_board" not in st.session_state:
+                                            st.session_state.notice_board = []
+                                            
+                                        st.session_state.notice_board.append({
+                                            "id": len(st.session_state.notice_board) + 1,
+                                            "author": f"{curr_user['full_name']} ({curr_user['role']})",
+                                            "title": n_title.strip(),
+                                            "content": n_content.strip(),
+                                            "is_poll": False,
+                                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                            "comments": []
+                                        })
+                                        save_data_to_file()
+                                        st.success("✅ Notice successfully published to Notice Board!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Please fill in both title and content.")
+                    
+                        elif action_type == "Create Poll":
+                            with st.form("admin_create_poll_form"):
+                                p_question = st.text_input("Poll Question / Title:")
+                                p_options_raw = st.text_area("Options (Enter each option on a new line):", value="Yes\nNo")
+                                
+                                if st.form_submit_button("📊 Publish Poll", type="primary"):
+                                    options = [opt.strip() for opt in p_options_raw.split("\n") if opt.strip()]
+                                    if p_question.strip() and len(options) >= 2:
+                                        if "notice_board" not in st.session_state:
+                                            st.session_state.notice_board = []
+                                            
+                                        st.session_state.notice_board.append({
+                                            "id": len(st.session_state.notice_board) + 1,
+                                            "author": f"{curr_user['full_name']} ({curr_user['role']})",
+                                            "title": f"📊 Poll: {p_question.strip()}",
+                                            "content": p_question.strip(),
+                                            "is_poll": True,
+                                            "poll_options": options,
+                                            "poll_votes": {},  # {username: selected_option}
+                                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                            "comments": []
+                                        })
+                                        save_data_to_file()
+                                        st.success("✅ Poll successfully published to Notice Board!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Please provide a question and at least 2 options.")
+                    
+                    with t7:
+                        if curr_user["role"] == "Superadmin":
+                            if st.button("🔥 EXECUTE MASTER RESET", key="btn_mr"):
+                                st.session_state.group_chat = []
+                                st.session_state.football_ai_chats = []
+                                st.session_state.personal_ai_chats = {}
+                                save_data_to_file()
+                                st.success("Master Reset completed!")
+                                st.rerun()    
