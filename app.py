@@ -635,7 +635,7 @@ elif nav_choice == "🖼️ Member Photo Gallery":
                 st.caption(f"👤 **{udata['full_name']}** (@{u})")
 
 # ==========================================
-# 9. SQUAD GENERATION & TACTICS (WITH SMART POSITION MATCHING)
+# 9. SQUAD GENERATION & TACTICS (DYNAMIC SQUAD SIZE FIXED)
 # ==========================================
 elif nav_choice == "⚽ Squad Generation & Tactics":
     st.header("⚽ Tactical Squad Generator")
@@ -647,28 +647,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
     
     active_users = get_active_unblocked_users()
     max_avail = len(active_users)
-    
-    # Helper function for visual box creation
-    def generate_visual_formation_box(gk_name, field_dict):
-        def get_p(pos_key):
-            return field_dict.get(pos_key, "Vacant")
-
-        box = f"""
-               [ 🧤 গোলরক্ষক (GK): {gk_name} ]
-                               |
-+---------------------------------------------------------------------------------+
-| (LB): {get_p('LB')} | (LCB): {get_p('LCB')} | (RCB): {get_p('RCB')} | (RB): {get_p('RB')} | <-- ৪ জন ডিফেন্ডার
-+---------------------------------------------------------------------------------+
-                               |
-       +-----------------------------------------------------------+
-       | (LCM): {get_p('LCM')} | (CM): {get_p('CM')} | (RCM): {get_p('RCM')} | <-- ৩ জন মিডফিল্ডার
-       +-----------------------------------------------------------+
-                               |
-                      +------------------+
-                      | (LS): {get_p('LS')} | (RS): {get_p('RS')} | <-- ২ জন স্ট্রাইকার
-                      +------------------+
-        """
-        return box
 
     # ---------------------------------------------------------
     # MODE 1: SATURDAY MATCH SQUAD
@@ -680,16 +658,16 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 target_count = st.number_input(
                     "🔢 Select Field Squad Size (Starters):", 
                     min_value=1, 
-                    max_value=max_avail if max_avail > 0 else 11, 
+                    max_value=max_avail if max_avail > 0 else 20, 
                     value=min(10, max_avail if max_avail > 0 else 10),
                     step=1
                 )
             with col_s2:
                 fmt_mode = st.radio("📐 Formation Input:", ["🤖 AI Auto-Select", "✍️ Manual Custom"], horizontal=True)
                 if fmt_mode == "✍️ Manual Custom":
-                    custom_formation = st.text_input("Enter Formation (e.g., 4-3-2):", value="4-3-2")
+                    custom_formation = st.text_input("Enter Formation (e.g., 4-3-2 or 3-2-1):", value="4-3-2")
                 else:
-                    custom_formation = "AI Auto-Selected (4-3-2 Standard)"
+                    custom_formation = "AI Adaptive Formation"
         else:
             target_count = st.session_state.match_settings.get("asmb_player_count", 10)
             custom_formation = "Adaptive Formation"
@@ -702,13 +680,11 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             gk_candidates = [u for u in available if active_users[u].get("position") == "GK"]
             field_candidates = [u for u in available if active_users[u].get("position") != "GK"]
             
-            # GK Selection: Highest rated original GK gets preference
             gk_player = None
             if gk_candidates:
                 gk_candidates_sorted = sorted(gk_candidates, key=lambda x: compute_player_rating(x), reverse=True)
                 gk_player = gk_candidates_sorted[0]
             elif available:
-                # Fallback only if NO registered GK is available
                 sorted_all = sorted(available, key=lambda x: compute_player_rating(x), reverse=True)
                 gk_player = sorted_all[0]
                 field_candidates = [u for u in available if u != gk_player]
@@ -720,80 +696,63 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             starters_field = field_sorted[:target_count]
             subs = field_sorted[target_count:]
             
-            # 3. SMART POSITION MATCHING LOGIC
-            # Defined pitch slot categories
-            slot_categories = {
-                "DEF": ["LB", "LCB", "RCB", "RB"],
-                "MID": ["LCM", "CM", "RCM"],
-                "ATT": ["LS", "RS"]
-            }
-            
-            assigned_positions = {}
-            unassigned_starters = []
+            # 3. DYNAMIC POSITION ASSIGNMENT (Any squad size)
+            def categorize_pos(pos):
+                pos = str(pos).upper()
+                if any(d in pos for d in ["CB", "LB", "RB", "DEF"]): return "DEF"
+                if any(a in pos for a in ["ST", "RW", "LW", "CAM", "ATT", "CF"]): return "ATT"
+                return "MID"
 
-            # Step 3A: Map players with exact/matching preferred positions first
+            # Group players into categories
+            squad_by_cat = {"DEF": [], "MID": [], "ATT": []}
             for p_uname in starters_field:
-                p_pos = active_users[p_uname].get("position", "CM").upper()
-                display_str = f"{active_users[p_uname]['full_name']} ({compute_player_rating(p_uname)})"
-                
-                # Check direct slot availability
-                placed = False
-                for cat, slots in slot_categories.items():
-                    if p_pos in slots or p_pos in cat:
-                        for s in slots:
-                            if s not in assigned_positions:
-                                assigned_positions[s] = display_str
-                                placed = True
-                                break
-                    if placed:
-                        break
-                
-                if not placed:
-                    unassigned_starters.append((p_uname, display_str))
+                p_pos = active_users[p_uname].get("position", "CM")
+                cat = categorize_pos(p_pos)
+                squad_by_cat[cat].append((p_uname, f"{active_users[p_uname]['full_name']} (Rating: {compute_player_rating(p_uname)})", p_pos))
 
-            # Step 3B: Fill remaining open slots with unassigned players
-            all_slots = ["LB", "LCB", "RCB", "RB", "LCM", "CM", "RCM", "LS", "RS"]
-            vacant_slots = [s for s in all_slots if s not in assigned_positions]
-            
-            for idx, (p_uname, display_str) in enumerate(unassigned_starters):
-                if idx < len(vacant_slots):
-                    assigned_positions[vacant_slots[idx]] = display_str
-                else:
-                    assigned_positions[f"EXTRA_{idx+1}"] = display_str
-            
-            chosen_formation = custom_formation if fmt_mode == "✍️ Manual Custom" else "4-3-2 Tactical Setup"
+            chosen_formation = custom_formation if fmt_mode == "✍️ Manual Custom" else f"Adaptive ({len(squad_by_cat['DEF'])}-{len(squad_by_cat['MID'])}-{len(squad_by_cat['ATT'])})"
 
-            # Display Formation Details
-            st.markdown(f"### 🏆 Starting Lineup & Tactical Formation")
-            st.info(f"🎯 **Tactical Formation:** `{chosen_formation}`")
+            # Display Lineup
+            st.markdown(f"### 🏆 Starting Lineup & Tactical Setup")
+            st.info(f"🎯 **Tactical Formation:** `{chosen_formation}` | **Field Starters:** {len(starters_field)} Players")
             st.success(f"🧤 **Main Goalkeeper (GK):** {gk_name}")
             
-            # ASCII Visual Box Display
-            st.markdown("#### 🏟️ Pitch Position Diagram:")
-            visual_box_str = generate_visual_formation_box(gk_name, assigned_positions)
-            st.code(visual_box_str, language="text")
+            # Dynamic Visual Layout
+            st.markdown("#### 🏟️ Pitch Position Setup:")
+            pitch_code = f"[ 🧤 GK: {gk_name} ]\n"
+            pitch_code += "=" * 65 + "\n"
             
+            for zone, label in [("DEF", "Defenders"), ("MID", "Midfielders"), ("ATT", "Forwards/Attackers")]:
+                players_in_zone = squad_by_cat[zone]
+                if players_in_zone:
+                    line = f"| {label} ({len(players_in_zone)}): "
+                    line += " | ".join([f"{p[1]} [{p[2]}]" for p in players_in_zone])
+                    pitch_code += line + "\n"
+                    pitch_code += "-" * 65 + "\n"
+            
+            st.code(pitch_code, language="text")
+
+            # Notice Text Generation
             notice_text = f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n"
             notice_text += f"**Formation:** {chosen_formation}\n"
             notice_text += f"**🧤 GK:** {gk_name}\n\n"
             notice_text += f"**🏟️ Starting Field Lineup ({len(starters_field)} Players):**\n"
             
-            for slot, p_det in assigned_positions.items():
-                line = f"* **[{slot}]**: {p_det}"
-                st.markdown(line)
-                notice_text += f"{line}\n"
-                
-            # 4. Timed Substitutions Schedule (10:15 AM - 11:00 AM)
+            for zone in ["DEF", "MID", "ATT"]:
+                for p in squad_by_cat[zone]:
+                    line = f"* **[{p[2]}]**: {p[1]}"
+                    st.markdown(line)
+                    notice_text += f"{line}\n"
+
+            # 4. Substitution Schedule
             st.markdown("---")
-            st.markdown("### 🔄 Substitution Plan & Time Schedule (10:15 AM - 11:00 AM)")
-            
-            notice_text += f"\n**🔄 Substitution Schedule (10:15 - 11:00 AM without break):**\n"
+            st.markdown("### 🔄 Substitution Schedule (10:15 AM - 11:00 AM)")
+            notice_text += f"\n**🔄 Substitution Schedule:**\n"
             
             if subs:
                 start_time = datetime.datetime.strptime("10:15", "%H:%M")
-                match_duration = 45 # Minutes
+                match_duration = 45
                 interval = match_duration // (len(subs) + 1)
-                
                 starters_to_replace = list(reversed(starters_field))
                 
                 for idx, sub_p in enumerate(subs):
@@ -805,21 +764,23 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     replaced_user = active_users[replaced_p]
                     
                     sub_msg = (
-                        f"⏰ **সময় {time_str}:** "
+                        f"⏰ **সময় {time_str}:** "
                         f"মাঠে নামবেন ➡️ **{sub_user['full_name']}** (`@{sub_p}` | Rating: {compute_player_rating(sub_p)}) "
-                        f"| মাঠ ছাড়বেন ⬅️ **{replaced_user['full_name']}** (`@{replaced_p}`)"
+                        f"| মাঠ ছাড়বেন ⬅️ **{replaced_user['full_name']}** (`@{replaced_p}`)"
                     )
                     st.warning(sub_msg)
                     notice_text += f"* {sub_msg}\n"
             else:
-                st.info("ℹ️ No substitute players available. Starting XI will play full match.")
+                st.info("ℹ️ No substitute players available. Starting lineup will play full match.")
                 notice_text += "* No substitutes available.\n"
             
-            # Notice Board Publish
+            if "notice_board" not in st.session_state:
+                st.session_state.notice_board = []
+
             st.session_state.notice_board.append({
                 "id": len(st.session_state.notice_board) + 1,
                 "author": "Football AI Generator",
-                "title": f"Match Squad Lineup & Sub Schedule ({datetime.date.today()})",
+                "title": f"Match Squad Lineup ({len(starters_field)} Players + GK)",
                 "content": notice_text,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "comments": []
@@ -827,10 +788,10 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             
             st.session_state.match_settings["asmb_player_count"] = target_count
             save_data_to_file()
-            st.success("✅ Match Squad and Substitution Schedule published to Notice Board!")
+            st.success("✅ Match Squad successfully published to Notice Board!")
 
     # ---------------------------------------------------------
-    # MODE 2: PRACTICE DAY SPLIT (TWO BALANCED TEAMS)
+    # MODE 2: PRACTICE DAY SPLIT
     # ---------------------------------------------------------
     elif day_sel == "Practice Day Split (Mon-Thu)":
         st.subheader("🏃 Practice Match Balanced Team Generator")
@@ -862,18 +823,13 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     team_tp = []
                     team_el = []
                     
-                    # Snake Draft Allocation Logic for equal team strength
                     for idx, p in enumerate(sorted_players):
                         if (idx // 2) % 2 == 0:
-                            if idx % 2 == 0:
-                                team_tp.append(p)
-                            else:
-                                team_el.append(p)
+                            if idx % 2 == 0: team_tp.append(p)
+                            else: team_el.append(p)
                         else:
-                            if idx % 2 == 0:
-                                team_el.append(p)
-                            else:
-                                team_tp.append(p)
+                            if idx % 2 == 0: team_el.append(p)
+                            else: team_tp.append(p)
                                 
                     tp_ratings = [compute_player_rating(p) for p in team_tp]
                     el_ratings = [compute_player_rating(p) for p in team_el]
@@ -891,17 +847,19 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     
                     notice_text = f"### 🏃 Practice Match Teams - {datetime.date.today()}\n"
                     notice_text += f"**Formation:** {practice_formation}\n\n"
-                    
-                    notice_text += f"**🐯 🐅 Tigers & Panthers (Avg Rating: {avg_tp}):**\n"
+                    notice_text += f"**🐯 🐅 Tigers & Panthers ({len(team_tp)} Players | Avg Rating: {avg_tp}):**\n"
                     for idx, p in enumerate(team_tp, 1):
                         u = active_users[p]
                         notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u.get('position', 'N/A')} ({compute_player_rating(p)})\n"
                         
-                    notice_text += f"\n**🦅 🦁 Eagles & Lions (Avg Rating: {avg_el}):**\n"
+                    notice_text += f"\n**🦅 🦁 Eagles & Lions ({len(team_el)} Players | Avg Rating: {avg_el}):**\n"
                     for idx, p in enumerate(team_el, 1):
                         u = active_users[p]
                         notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u.get('position', 'N/A')} ({compute_player_rating(p)})\n"
                     
+                    if "notice_board" not in st.session_state:
+                        st.session_state.notice_board = []
+
                     st.session_state.notice_board.append({
                         "id": len(st.session_state.notice_board) + 1,
                         "author": "Football AI Generator",
@@ -934,10 +892,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                         u = active_users.get(p, {})
                         r = compute_player_rating(p)
                         st.markdown(f"{idx}. **{u.get('full_name', p)}** (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**")
-
-        else:
-            st.info("ℹ️ Practice teams can only be generated by Superadmin/Admin.")
-            
+                        
 # ==========================================
 # 10. RATINGS & RATING GUIDE
 # ==========================================
