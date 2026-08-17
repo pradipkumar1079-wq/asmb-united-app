@@ -1329,9 +1329,5 @@ with t7:
             st.session_state.football_ai_chats = []
             st.session_state.personal_ai_chats = {}
             save_data_to_file()
-            st.success("Master Reset completed!")
+            st.success("Master Reset completed! Chats purged while keeping user IDs intact.")
             st.rerun()
-                st.session_state.personal_ai_chats = {}
-                save_data_to_file()
-                st.success("Master Reset completed! Chats purged while keeping user IDs intact.")
-                st.rerun()
