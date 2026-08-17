@@ -635,7 +635,7 @@ elif nav_choice == "🖼️ Member Photo Gallery":
                 st.caption(f"👤 **{udata['full_name']}** (@{u})")
 
 # ==========================================
-# 9. SQUAD GENERATION & TACTICS (DYNAMIC SQUAD SIZE FIXED)
+# 9. SQUAD GENERATION & TACTICS (WITH RATINGS IN PUBLISHED NOTICE)
 # ==========================================
 elif nav_choice == "⚽ Squad Generation & Tactics":
     st.header("⚽ Tactical Squad Generator")
@@ -685,18 +685,20 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 gk_candidates_sorted = sorted(gk_candidates, key=lambda x: compute_player_rating(x), reverse=True)
                 gk_player = gk_candidates_sorted[0]
             elif available:
-                sorted_all = sorted(available, key=lambda x: compute_player_rating(x), reverse=True)
+                # Fallback: আসল GK না থাকলে কম রেটিংয়ের প্লেয়ারকে GK করা হবে
+                sorted_all = sorted(available, key=lambda x: compute_player_rating(x))
                 gk_player = sorted_all[0]
                 field_candidates = [u for u in available if u != gk_player]
 
-            gk_name = f"{active_users[gk_player]['full_name']} (@{gk_player})" if gk_player else "No GK Assigned"
+            gk_rating = compute_player_rating(gk_player) if gk_player else "N/A"
+            gk_name = f"{active_users[gk_player]['full_name']} (@{gk_player}) [Rating: {gk_rating}]" if gk_player else "No GK Assigned"
             
             # 2. Select top field players by rating
             field_sorted = sorted(field_candidates, key=lambda x: compute_player_rating(x), reverse=True)
             starters_field = field_sorted[:target_count]
             subs = field_sorted[target_count:]
             
-            # 3. DYNAMIC POSITION ASSIGNMENT (Any squad size)
+            # 3. DYNAMIC POSITION ASSIGNMENT
             def categorize_pos(pos):
                 pos = str(pos).upper()
                 if any(d in pos for d in ["CB", "LB", "RB", "DEF"]): return "DEF"
@@ -707,8 +709,9 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             squad_by_cat = {"DEF": [], "MID": [], "ATT": []}
             for p_uname in starters_field:
                 p_pos = active_users[p_uname].get("position", "CM")
+                p_rating = compute_player_rating(p_uname)
                 cat = categorize_pos(p_pos)
-                squad_by_cat[cat].append((p_uname, f"{active_users[p_uname]['full_name']} (Rating: {compute_player_rating(p_uname)})", p_pos))
+                squad_by_cat[cat].append((p_uname, f"{active_users[p_uname]['full_name']} (@{p_uname})", p_pos, p_rating))
 
             chosen_formation = custom_formation if fmt_mode == "✍️ Manual Custom" else f"Adaptive ({len(squad_by_cat['DEF'])}-{len(squad_by_cat['MID'])}-{len(squad_by_cat['ATT'])})"
 
@@ -726,13 +729,13 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                 players_in_zone = squad_by_cat[zone]
                 if players_in_zone:
                     line = f"| {label} ({len(players_in_zone)}): "
-                    line += " | ".join([f"{p[1]} [{p[2]}]" for p in players_in_zone])
+                    line += " | ".join([f"{p[1]} [{p[2]}] (Rating: {p[3]})" for p in players_in_zone])
                     pitch_code += line + "\n"
                     pitch_code += "-" * 65 + "\n"
             
             st.code(pitch_code, language="text")
 
-            # Notice Text Generation
+            # Notice Text Generation (With Ratings)
             notice_text = f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n"
             notice_text += f"**Formation:** {chosen_formation}\n"
             notice_text += f"**🧤 GK:** {gk_name}\n\n"
@@ -740,11 +743,11 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
             
             for zone in ["DEF", "MID", "ATT"]:
                 for p in squad_by_cat[zone]:
-                    line = f"* **[{p[2]}]**: {p[1]}"
+                    line = f"* **[{p[2]}]**: {p[1]} - Rating: **{p[3]}**"
                     st.markdown(line)
                     notice_text += f"{line}\n"
 
-            # 4. Substitution Schedule
+            # 4. Substitution Schedule (With Ratings)
             st.markdown("---")
             st.markdown("### 🔄 Substitution Schedule (10:15 AM - 11:00 AM)")
             notice_text += f"\n**🔄 Substitution Schedule:**\n"
@@ -760,13 +763,15 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                     time_str = sub_time.strftime("%I:%M %p")
                     
                     sub_user = active_users[sub_p]
+                    sub_rating = compute_player_rating(sub_p)
                     replaced_p = starters_to_replace[idx % len(starters_to_replace)]
                     replaced_user = active_users[replaced_p]
+                    replaced_rating = compute_player_rating(replaced_p)
                     
                     sub_msg = (
-                        f"⏰ **সময় {time_str}:** "
-                        f"মাঠে নামবেন ➡️ **{sub_user['full_name']}** (`@{sub_p}` | Rating: {compute_player_rating(sub_p)}) "
-                        f"| মাঠ ছাড়বেন ⬅️ **{replaced_user['full_name']}** (`@{replaced_p}`)"
+                        f"⏰ **সময় {time_str}:** "
+                        f"মাঠে নামবেন ➡️ **{sub_user['full_name']}** (`@{sub_p}` | Rating: **{sub_rating}**) "
+                        f"| মাঠ ছাড়বেন ⬅️ **{replaced_user['full_name']}** (`@{replaced_p}` | Rating: **{replaced_rating}**)"
                     )
                     st.warning(sub_msg)
                     notice_text += f"* {sub_msg}\n"
@@ -845,17 +850,20 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
                         "formation": practice_formation
                     }
                     
+                    # Notice Text Generation (With Player Ratings)
                     notice_text = f"### 🏃 Practice Match Teams - {datetime.date.today()}\n"
                     notice_text += f"**Formation:** {practice_formation}\n\n"
                     notice_text += f"**🐯 🐅 Tigers & Panthers ({len(team_tp)} Players | Avg Rating: {avg_tp}):**\n"
                     for idx, p in enumerate(team_tp, 1):
                         u = active_users[p]
-                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u.get('position', 'N/A')} ({compute_player_rating(p)})\n"
+                        r = compute_player_rating(p)
+                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**\n"
                         
                     notice_text += f"\n**🦅 🦁 Eagles & Lions ({len(team_el)} Players | Avg Rating: {avg_el}):**\n"
                     for idx, p in enumerate(team_el, 1):
                         u = active_users[p]
-                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: {u.get('position', 'N/A')} ({compute_player_rating(p)})\n"
+                        r = compute_player_rating(p)
+                        notice_text += f"{idx}. {u['full_name']} (@{p}) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**\n"
                     
                     if "notice_board" not in st.session_state:
                         st.session_state.notice_board = []
