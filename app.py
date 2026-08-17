@@ -11,6 +11,16 @@ import os
 import base64
 
 # ==========================================
+# 0. PAGE CONFIGURATION (MUST BE FIRST)
+# ==========================================
+st.set_page_config(
+    page_title="ASMB United Football Club",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==========================================
 # PERMANENT MEMORY FILE ENGINE (JSON STORAGE)
 # ==========================================
 DB_FILE = "asmb_football_club_data.json"
@@ -20,39 +30,33 @@ def load_data_from_file():
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as e:
+            st.error(f"Error loading database file: {e}")
             pass
     return None
 
 def save_data_to_file():
     data_to_save = {
-        "app_settings": st.session_state.app_settings,
-        "users": st.session_state.users,
-        "ratings_db": {f"{k[0]}|||{k[1]}": v for k, v in st.session_state.ratings_db.items()},
-        "player_stats": st.session_state.player_stats,
-        "group_chat": st.session_state.group_chat,
-        "football_ai_chats": st.session_state.football_ai_chats,
-        "personal_ai_chats": st.session_state.personal_ai_chats,
-        "notice_board": st.session_state.notice_board,
-        "motm_votes": st.session_state.motm_votes,
-        "injured_players": list(st.session_state.injured_players),
-        "match_settings": st.session_state.match_settings,
-        "block_appeals": st.session_state.block_appeals,
+        "app_settings": st.session_state.get("app_settings", {}),
+        "users": st.session_state.get("users", {}),
+        "ratings_db": {f"{k[0]}|||{k[1]}": v for k, v in st.session_state.get("ratings_db", {}).items()},
+        "player_stats": st.session_state.get("player_stats", {}),
+        "group_chat": st.session_state.get("group_chat", []),
+        "football_ai_chats": st.session_state.get("football_ai_chats", []),
+        "personal_ai_chats": st.session_state.get("personal_ai_chats", {}),
+        "notice_board": st.session_state.get("notice_board", []),
+        "motm_votes": st.session_state.get("motm_votes", {}),
+        "injured_players": list(st.session_state.get("injured_players", set())),
+        "match_settings": st.session_state.get("match_settings", {}),
+        "block_appeals": st.session_state.get("block_appeals", {}),
         "match_availability_poll": st.session_state.get("match_availability_poll", {})
     }
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data_to_save, f, indent=4, ensure_ascii=False)
 
 # ==========================================
-# 0. INITIALIZE SESSION & DATABASE
+# INITIALIZE SESSION & DATABASE
 # ==========================================
-st.set_page_config(
-    page_title="ASMB United Football Club",
-    page_icon="⚽",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 def init_db():
     if "db_initialized" not in st.session_state:
         saved_data = load_data_from_file()
@@ -64,8 +68,22 @@ def init_db():
                 "max_register_limit": 50,
                 "club_photo_b64": None
             })
-            st.session_state.users = saved_data.get("users", {})
             
+            # ডিফল্ট অ্যাডমিন নিশ্চিত করা যদি ফাইলে ইউজার না থাকে
+            default_users = {
+                "admin": {
+                    "full_name": "Super Admin",
+                    "position": "CM",
+                    "role": "Superadmin",
+                    "password": "123",
+                    "blocked": False
+                }
+            }
+            st.session_state.users = saved_data.get("users", default_users)
+            if not st.session_state.users:
+                st.session_state.users = default_users
+            
+            # Key Tuple Conversion for Ratings
             raw_ratings = saved_data.get("ratings_db", {})
             st.session_state.ratings_db = {}
             for key_str, val in raw_ratings.items():
@@ -89,13 +107,22 @@ def init_db():
             st.session_state.block_appeals = saved_data.get("block_appeals", {})
             st.session_state.match_availability_poll = saved_data.get("match_availability_poll", {})
         else:
+            # ফাইল প্রথমবার না থাকলে ডিফল্ট ডেটা দিয়ে ফাইল তৈরি হবে
             st.session_state.app_settings = {
                 "app_name": "ASMB United Football Club",
                 "bg_color": "#00D2FF",
                 "max_register_limit": 50,
                 "club_photo_b64": None
             }
-            st.session_state.users = {}
+            st.session_state.users = {
+                "admin": {
+                    "full_name": "Super Admin",
+                    "position": "CM",
+                    "role": "Superadmin",
+                    "password": "123",
+                    "blocked": False
+                }
+            }
             st.session_state.ratings_db = {}
             st.session_state.player_stats = {}
             st.session_state.group_chat = []
@@ -116,8 +143,8 @@ def init_db():
             
         st.session_state.db_initialized = True
 
+# অ্যাপ রান হওয়ার শুরুতেই ডেটাবেস ইনিশিয়ালাইজেশন
 init_db()
-
 # ==========================================
 # 1. DYNAMIC COLOR ENGINE & CSS INJECTION
 # ==========================================
@@ -260,7 +287,7 @@ if "authenticated_user" not in st.session_state:
     st.session_state.authenticated_user = None
 
 def login_register_surface():
-    st.markdown(f'<h1 class="daily-club-title">⚽ {st.session_state.app_settings["app_name"]}</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 class="daily-club-title">⚽ {st.session_state.app_settings.get("app_name", "Football Club")}</h1>', unsafe_allow_html=True)
     
     if st.session_state.app_settings.get("club_photo_b64"):
         try:
@@ -281,7 +308,7 @@ def login_register_surface():
                 user = st.session_state.users[login_username]
                 if user.get("password") == login_password:
                     st.session_state.authenticated_user = login_username
-                    st.success(f"Welcome back, {user['full_name']}!")
+                    st.success(f"Welcome back, {user.get('full_name', login_username)}!")
                     st.rerun()
                 else:
                     st.error("Invalid password. Please try again.")
@@ -290,69 +317,71 @@ def login_register_surface():
 
     with tab2:
         st.subheader("Club Registration Form")
-        active_count = len(get_active_unblocked_users())
+        active_count = len(get_active_unblocked_users()) if "get_active_unblocked_users" in globals() else len(st.session_state.users)
         max_limit = st.session_state.app_settings.get("max_register_limit", 50)
         
         st.info(f"👥 **Registered Active Members:** {active_count} / {max_limit}")
         
         if active_count >= max_limit:
             st.error("⛔ Registration limit reached! Controlled by Admin.")
-            return
-
-        reg_username = st.text_input("Username (Unique ID)*", key="reg_uname").strip()
-        reg_password = st.text_input("Password*", type="password", key="reg_pass")
-        reg_sec_key = st.text_input("Security Key (Required for Reset Password)*", key="reg_sec_key", type="password")
-        reg_full_name = st.text_input("Full Name*", key="reg_fullname")
-        reg_jersey_num = st.number_input("Jersey Number*", min_value=1, max_value=99, step=1)
-        reg_jersey_name = st.text_input("Jersey Player Name*", key="reg_jname")
-        
-        reg_photo_file = st.file_uploader("Upload Photo (Optional)", type=["jpg", "png", "jpeg"])
-        reg_photo_b64 = None
-        if reg_photo_file:
-            reg_photo_b64 = base64.b64encode(reg_photo_file.read()).decode('utf-8')
-
-        reg_personal_ai = st.text_input("Personal AI Custom Name*", value="Jarvis", key="reg_pai")
-        
-        is_first_user = len(st.session_state.users) == 0
-        if is_first_user:
-            st.info("ℹ️ First user automatically granted Superadmin (S.A) role.")
-            reg_position = st.selectbox("Assign Initial Position (Superadmin Exclusive)", ["GK","CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"])
         else:
-            st.warning("🔒 Position assignment is strictly disabled during registration. S.A/Admin will set your position later.")
-            reg_position = "Unassigned"
+            reg_username = st.text_input("Username (Unique ID)*", key="reg_uname").strip()
+            reg_password = st.text_input("Password*", type="password", key="reg_pass")
+            reg_sec_key = st.text_input("Security Key (Required for Reset Password)*", key="reg_sec_key", type="password").strip()
+            reg_full_name = st.text_input("Full Name*", key="reg_fullname").strip()
+            reg_jersey_num = st.number_input("Jersey Number*", min_value=1, max_value=99, step=1)
+            reg_jersey_name = st.text_input("Jersey Player Name*", key="reg_jname").strip()
+            
+            reg_photo_file = st.file_uploader("Upload Photo (Optional)", type=["jpg", "png", "jpeg"])
+            reg_photo_b64 = None
+            if reg_photo_file:
+                reg_photo_b64 = base64.b64encode(reg_photo_file.read()).decode('utf-8')
 
-        if st.button("Register Account", key="btn_reg"):
-            if not reg_username or not reg_password or not reg_full_name or not reg_jersey_name or not reg_personal_ai or not reg_sec_key:
-                st.error("Please fill in all required fields!")
-                return
+            reg_personal_ai = st.text_input("Personal AI Custom Name*", value="Jarvis", key="reg_pai").strip()
             
-            if reg_username in st.session_state.users:
-                st.error("⚠️ Username already exists! Redirecting to login...")
-                return
-            
-            role = "Superadmin" if is_first_user else "Player"
-            
-            st.session_state.users[reg_username] = {
-                "password": reg_password,
-                "sec_key": reg_sec_key.strip(),
-                "full_name": reg_full_name,
-                "jersey_num": reg_jersey_num,
-                "jersey_name": reg_jersey_name,
-                "photo_b64": reg_photo_b64,
-                "personal_ai_name": reg_personal_ai,
-                "role": role,
-                "position": reg_position,
-                "status": "Active",
-                "block_reason": "",
-                "is_star": False
-            }
-            
-            st.session_state.player_stats[reg_username] = {
-                "goals": 0, "assists": 0, "conceded_penalty": 0.0, "attendance": "Present", "rating_penalty": 0.0, "gk_saves": 0
-            }
-            
-            save_data_to_file()
-            st.success("Registration successful! You can now login.")
+            is_first_user = len(st.session_state.users) == 0
+            if is_first_user:
+                st.info("ℹ️ First user automatically granted Superadmin (S.A) role.")
+                reg_position = st.selectbox("Assign Initial Position (Superadmin Exclusive)", ["GK","CB", "LB", "RB", "CM", "CAM", "RW", "LW", "ST"])
+            else:
+                st.warning("🔒 Position assignment is strictly disabled during registration. S.A/Admin will set your position later.")
+                reg_position = "Unassigned"
+
+            if st.button("Register Account", key="btn_reg"):
+                if not reg_username or not reg_password or not reg_full_name or not reg_jersey_name or not reg_personal_ai or not reg_sec_key:
+                    st.error("Please fill in all required fields!")
+                elif reg_username in st.session_state.users:
+                    st.error("⚠️ Username already exists! Please try logging in or use another Username.")
+                else:
+                    role = "Superadmin" if is_first_user else "Player"
+                    
+                    # সেভ ইউজার ডেটা
+                    st.session_state.users[reg_username] = {
+                        "password": reg_password,
+                        "sec_key": reg_sec_key,
+                        "full_name": reg_full_name,
+                        "jersey_num": reg_jersey_num,
+                        "jersey_name": reg_jersey_name,
+                        "photo_b64": reg_photo_b64,
+                        "personal_ai_name": reg_personal_ai,
+                        "role": role,
+                        "position": reg_position,
+                        "status": "Active",
+                        "block_reason": "",
+                        "is_star": False
+                    }
+                    
+                    # সেভ স্ট্যাটস ডেটা
+                    if "player_stats" not in st.session_state:
+                        st.session_state.player_stats = {}
+                        
+                    st.session_state.player_stats[reg_username] = {
+                        "goals": 0, "assists": 0, "conceded_penalty": 0.0, "attendance": "Present", "rating_penalty": 0.0, "gk_saves": 0
+                    }
+                    
+                    # ডেটা ফাইলে সেভ করা
+                    save_data_to_file()
+                    st.success("Registration successful! Please go to Login tab.")
 
     with tab3:
         st.subheader("🔑 Forget Password Reset")
@@ -378,6 +407,7 @@ def login_register_surface():
             else:
                 st.error("Username not found!")
 
+# অথেন্টিকেশন ব্লক চেক
 if not st.session_state.authenticated_user:
     login_register_surface()
     st.stop()
