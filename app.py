@@ -11,6 +11,14 @@ import os
 import base64
 import google.generativeai as genai
 
+# Google Generative AI সেফ ইমপোর্ট
+try:
+  import google.generativeai as genai
+
+  HAS_GENAI = True
+except ModuleNotFoundError:
+  HAS_GENAI = False
+    
 # ==========================================
 # 0. PAGE CONFIGURATION (MUST BE FIRST)
 # ==========================================
