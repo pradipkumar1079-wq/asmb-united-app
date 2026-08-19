@@ -269,7 +269,7 @@ def get_daily_theme_colors():
 bg_color, title_text_color = get_daily_theme_colors()
 st.session_state.app_settings["bg_color"] = bg_color
 
-# CSS Injection: সমস্ত লেখা ও শিরোনাম কালো (#000000) করা হয়েছে
+# CSS Injection: সমস্ত ব্র্যাকেট সঠিকভাবে এস্কেপ ({{ ... }}) করা হয়েছে
 st.markdown(
     f"""
     <style>
@@ -287,21 +287,21 @@ st.markdown(
         font-weight: 900 !important;
         text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
     }}
-   /* বাটনের ব্যাকগ্রাউন্ড সাদা, টেক্সট কালো এবং আউটলাইন কালো করার স্টাইল */
-    div.stButton > button {
+    /* বাটনের ব্যাকগ্রাউন্ড সাদা, টেক্সট কালো এবং আউটলাইন কালো করার স্টাইল (ডাবল ব্র্যাকেট সহ) */
+    div.stButton > button {{
         background-color: #FFFFFF !important;
         color: #000000 !important;
         border: 2px solid #000000 !important;
         border-radius: 8px !important;
         font-weight: bold !important;
         transition: all 0.2s ease !important;
-    }
+    }}
     /* মাউস হোভার করলে বাটনের ব্যাকগ্রাউন্ড হালকা গ্রে হবে */
-    div.stButton > button:hover {
+    div.stButton > button:hover {{
         background-color: #E5E5E5 !important; 
         color: #000000 !important;
         border-color: #000000 !important;
-    }
+    }}
     </style>
 """,
     unsafe_allow_html=True,
