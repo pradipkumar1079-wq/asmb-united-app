@@ -27,17 +27,16 @@ DB_FILE = "asmb_football_club_data.json"
 
 
 def load_data_from_file():
+  """ফাইল থেকে ডাটা লোড করার লজিক"""
   if os.path.exists(DB_FILE):
     try:
       with open(DB_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-        # ------------------------------------------
-        # 🔑 AUTO ASSIGN FIRST REGISTERED USER AS SUPERADMIN
-        # ------------------------------------------
+        # ১ নম্বর রেজিস্টার্ড প্লেয়ারকে নিশ্চিতভাবে Superadmin রাখা
         if data and "users" in data and isinstance(data["users"], dict):
           users_dict = data["users"]
-          if users_dict:
+          if len(users_dict) > 0:
             first_username = list(users_dict.keys())[0]
             users_dict[first_username]["role"] = "Superadmin"
 
@@ -50,9 +49,9 @@ def load_data_from_file():
 
 def save_data_to_file():
   """পরবর্তী সমস্ত নতুন আইডি এবং তথ্য স্থায়ীভাবে সংরক্ষণের ফাংশন"""
-
-  # সেভ করার আগেও নিশ্চিত করা হচ্ছে যেন প্রথম রেজিস্টার্ড মেম্বার Superadmin থাকে
   users_data = st.session_state.get("users", {})
+
+  # প্রথম রেজিস্টার্ড মেম্বার যেন সবসময় Superadmin থাকে
   if users_data and isinstance(users_data, dict) and len(users_data) > 0:
     first_user = list(users_data.keys())[0]
     users_data[first_user]["role"] = "Superadmin"
@@ -82,7 +81,7 @@ def save_data_to_file():
 
 
 # ==========================================
-# SUPER ADMIN (s.a) ID DELETE & MANAGEMENT ENGINE
+# SUPER ADMIN (s.a) ID DELETE & ROLE MANAGEMENT ENGINE
 # ==========================================
 
 
@@ -92,17 +91,14 @@ def delete_single_user_by_sa(username_to_delete):
       "users" in st.session_state
       and username_to_delete in st.session_state["users"]
   ):
-    # ১. ইউজার প্রোফাইল ডিলিট
     del st.session_state["users"][username_to_delete]
 
-    # ২. প্লেয়ার স্ট্যাটস ডিলিট (যদি থাকে)
     if (
         "player_stats" in st.session_state
         and username_to_delete in st.session_state["player_stats"]
     ):
       del st.session_state["player_stats"][username_to_delete]
 
-    # ৩. ইনজুরি তালিকা থেকে মুছে ফেলা
     if (
         "injured_players" in st.session_state
         and username_to_delete in st.session_state["injured_players"]
@@ -113,7 +109,6 @@ def delete_single_user_by_sa(username_to_delete):
         if username_to_delete in st.session_state["injured_players"]:
           st.session_state["injured_players"].remove(username_to_delete)
 
-    # ৪. নতুন অবস্থার পারমানেন্ট সেভ
     save_data_to_file()
     return True
   return False
@@ -129,17 +124,14 @@ def clear_all_data_by_sa():
   st.session_state["motm_votes"] = {}
   st.session_state["match_availability_poll"] = {}
 
-  # খালি ডাটাবেজ ফাইল পারমানেন্ট সেভ করা
   save_data_to_file()
 
 
 def render_sa_id_management_panel():
-  """শুধু Super Admin (s.a) বা Admin এর জন্য আইডি ডিলিট করার UI Control Panel"""
-  current_user = st.session_state.get("logged_in_user") or st.session_state.get(
-      "user"
-  )
+  """Super Admin (S.A) ইউজার কন্ট্রোল ও রোলে প্রমোট করার প্যানেল"""
+  current_user = st.session_state.get("authenticated_user")
 
-  st.markdown("### 🔑 Super Admin (s.a) ID Control Center")
+  st.markdown("### 🔑 Super Admin (S.A) ID & Role Control Center")
 
   users = st.session_state.get("users", {})
 
@@ -149,7 +141,31 @@ def render_sa_id_management_panel():
 
   st.write(f"📊 **মোট নিবন্ধিত আইডি সংখ্যা:** {len(users)}")
 
-  # ১. নির্দিষ্ট একটি আইডি বেছে নিয়ে ডিলিট করার অপশন
+  # 👑 ১. অ্যাডমিন বানানোর অপশন (Make Admin)
+  st.markdown("#### 👑 কাউকে Admin বা Role চেঞ্জ করুন")
+  other_users = [u for u in users.keys() if u != current_user]
+
+  if other_users:
+    target_user_role = st.selectbox(
+        "যাকে অ্যাডমিন বানাতে চান বেছে নিন:",
+        other_users,
+        key="sa_make_admin_select",
+    )
+    new_role = st.selectbox(
+        "নতুন রোল বেছে নিন:",
+        ["Player", "Admin"],
+        key="sa_role_choice",
+    )
+
+    if st.button("🔄 রোল আপডেট করুন"):
+      st.session_state.users[target_user_role]["role"] = new_role
+      save_data_to_file()
+      st.success(f"@{target_user_role} কে সফলভাবে {new_role} করা হয়েছে!")
+      st.rerun()
+
+  st.markdown("---")
+
+  # 🗑️ ২. নির্দিষ্ট আইডি ডিলিট করার অপশন
   st.markdown("#### 🗑️ নির্দিষ্ট আইডি ডিলিট করুন")
   user_list = list(users.keys())
 
@@ -159,22 +175,17 @@ def render_sa_id_management_panel():
       key="sa_user_select",
   )
 
-  col1, col2 = st.columns([2, 3])
-  with col1:
-    if st.button("❌ নির্বাচিত আইডি ডিলিট করুন", type="primary"):
-      if selected_user == current_user:
-        st.error("আপনি বর্তমান লগইন করা নিজ আইডি ডিলিট করতে পারবেন না!")
+  if st.button("❌ নির্বাচিত আইডি ডিলিট করুন", type="primary"):
+    if selected_user == current_user:
+      st.error("আপনি বর্তমান লগইন করা নিজ আইডি ডিলিট করতে পারবেন না!")
+    else:
+      if delete_single_user_by_sa(selected_user):
+        st.success(f"আইডি '{selected_user}' সফলভাবে ডিলিট করা হয়েছে!")
+        st.rerun()
       else:
-        if delete_single_user_by_sa(selected_user):
-          st.success(
-              f"আইডি '{selected_user}' সফলভাবে ডিলিট করা হয়েছে এবং"
-              " স্থায়ীভাবে সেভ হয়েছে!"
-          )
-          st.rerun()
-        else:
-          st.error("আইডি ডিলিট করতে সমস্যা হয়েছে।")
+        st.error("আইডি ডিলিট করতে সমস্যা হয়েছে।")
 
-  # ২. সমস্ত পুরাতন আইডি এক ক্লিকে মুছে ফেলার সুবিধা
+  # 🚨 ৩. সমস্ত আইডি একবারে রিমুভ করার সুবিধা
   st.markdown("---")
   with st.expander(
       "⚠️ [Super Admin Only] সমস্ত পুরাতন আইডি একবারে রিমুভ করুন"
@@ -182,10 +193,7 @@ def render_sa_id_management_panel():
     st.warning("এই বাটনে চাপ দিলে সকল ইউজার আইডি মুছে যাবে।")
     if st.button("🚨 সকল পুরাতন আইডি ক্লিন করুন", key="clear_all_sa_btn"):
       clear_all_data_by_sa()
-      st.success(
-          "সকল নিবন্ধিত আইডি মুছে ডাটাবেজ খালি করা হয়েছে! এখন থেকে নতুন"
-          " আইডিগুলো স্থায়ীভাবে সেভ থাকবে।"
-      )
+      st.success("সকল নিবন্ধিত আইডি মুছে ডাটাবেজ খালি করা হয়েছে!")
       st.rerun()
 
 
@@ -207,10 +215,8 @@ def init_db():
           },
       )
 
-      # ইউজার লোড করা (ডিফল্ট ফেক অ্যাডমিন আইডি বাদ দেওয়া হয়েছে)
       st.session_state.users = saved_data.get("users", {})
 
-      # Key Tuple Conversion for Ratings
       raw_ratings = saved_data.get("ratings_db", {})
       st.session_state.ratings_db = {}
       for key_str, val in raw_ratings.items():
@@ -246,7 +252,6 @@ def init_db():
       )
 
     else:
-      # ফাইল প্রথমবার না থাকলে বা মুছে ফেলা হলে খালি ডিকশনারি ইনিশিয়ালাইজেশন
       st.session_state.app_settings = {
           "app_name": "ASMB United Football Club",
           "bg_color": "#00D2FF",
@@ -275,44 +280,38 @@ def init_db():
 
     st.session_state.db_initialized = True
 
-  # ------------------------------------------
-  # 👑 নিশ্চিতভাবে ১ নম্বর রেজিস্টার্ড প্লেয়ারকে Superadmin বানানো
-  # ------------------------------------------
   if "users" in st.session_state and isinstance(st.session_state.users, dict):
     if len(st.session_state.users) > 0:
       first_username = list(st.session_state.users.keys())[0]
       st.session_state.users[first_username]["role"] = "Superadmin"
 
 
-# অ্যাপ রান হওয়ার শুরুতেই ডেটাবেস ইনিশিয়ালাইজেশন
 init_db()
 
 # ==========================================
 # 1. DYNAMIC COLOR ENGINE & CSS INJECTION
 # ==========================================
 def get_daily_theme_colors():
-  # ⚽ ছেলেদের পছন্দের স্পোর্টি, ডার্ক ও রয়্যাল কালার প্যালেট
   men_favorite_bg_colors = [
-      "#0F172A",  # Midnight Slate
-      "#1E3A8A",  # Royal Navy Blue
-      "#064E3B",  # Deep Emerald Green
-      "#18181B",  # Charcoal Matte
-      "#4C1D95",  # Deep Purple / Crimson Accent
-      "#1E293B",  # Dark Steel
-      "#450A0A",  # Dark Burgundy Red
+      "#0F172A",
+      "#1E3A8A",
+      "#064E3B",
+      "#18181B",
+      "#4C1D95",
+      "#1E293B",
+      "#450A0A",
   ]
   day_idx = datetime.datetime.now().day % len(men_favorite_bg_colors)
   bg = men_favorite_bg_colors[day_idx]
 
-  # প্রিমিয়াম লুক এবং হাই কন্ট্রাস্ট নিশ্চিত করতে হেডার/টাইটেল টেক্সট কালার
   title_text_colors = [
-      "#38BDF8",  # Light Sky Blue
-      "#60A5FA",  # Soft Blue
-      "#34D399",  # Mint Emerald
-      "#FACC15",  # Premium Gold
-      "#C084FC",  # Neon Purple
-      "#94A3B8",  # Platinum Silver
-      "#F87171",  # Vibrant Red
+      "#38BDF8",
+      "#60A5FA",
+      "#34D399",
+      "#FACC15",
+      "#C084FC",
+      "#94A3B8",
+      "#F87171",
   ]
   txt = title_text_colors[day_idx]
 
@@ -322,6 +321,7 @@ def get_daily_theme_colors():
 bg_color, title_text_color = get_daily_theme_colors()
 st.session_state.app_settings["bg_color"] = bg_color
 
+# আপনার চাওয়া অনুযায়ী বাটনের স্টাইল (কালো ব্যাকগ্রাউন্ড, সাদা আউটলাইন, সাদা টেক্সট)
 st.markdown(
     f"""
     <style>
@@ -338,18 +338,19 @@ st.markdown(
         font-weight: 900 !important;
         text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
     }}
-    /* ⚪ বাটনের ব্যাকগ্রাউন্ড সাদা এবং টেক্সট কালো করার স্টাইল */
+   /* বাটনের ব্যাকগ্রাউন্ড কালো, টেক্সট সাদা এবং আউটলাইন সাদা করার স্টাইল */
     div.stButton > button {{
-        background-color: #FFFFFF !important;
-        color: #000000 !important;
-        border: 2px solid #000000 !important;
+        background-color: #000000 !important;
+        color: #FFFFFF !important;
+        border: 2px solid #FFFFFF !important;
         border-radius: 8px !important;
         font-weight: bold !important;
         transition: all 0.2s ease !important;
     }}
+    /* মাউস হোভার করলে বাটনের রঙ কিছুটা পরিবর্তন হবে */
     div.stButton > button:hover {{
-        background-color: #F0F2F6 !important;
-        color: #000000 !important;
+        background-color: #333333 !important; 
+        color: #FFFFFF !important;
         border-color: #FFFFFF !important;
     }}
     </style>
@@ -362,7 +363,6 @@ st.markdown(
 # 2. HELPER CALCULATORS & BUSINESS LOGIC
 # ==========================================
 def get_active_unblocked_users():
-  """এক্টিভ ও আনব্লকড ইউজারদের ফিল্টার করে আনা (ব্লকড বা ডিলিটেড আইডি বাদ দেওয়া)"""
   return {
       u: data
       for u, data in st.session_state.users.items()
@@ -371,7 +371,6 @@ def get_active_unblocked_users():
 
 
 def compute_player_rating(username):
-  """প্লেয়ারের রেটিং গণনাকারী লজিক (নিরাপদ ডাটা চেকিং সহ)"""
   if username not in st.session_state.users:
     return 0.0
 
@@ -437,7 +436,6 @@ def compute_player_rating(username):
 
 
 def get_highest_motm_player():
-  """MOTM (Man of the Match) বিজয়ী প্লেয়ার নির্ধারণ"""
   if not st.session_state.get("motm_votes"):
     return None
   votes_list = list(st.session_state.motm_votes.values())
@@ -450,7 +448,6 @@ def get_highest_motm_player():
 
 
 def update_star_players():
-  """স্টার প্লেয়ারদের স্ট্যাটাস আপডেট করা এবং পরিবর্তন স্থায়ীভাবে সেভ করা"""
   top_motm_player = get_highest_motm_player()
   for uname, udata in st.session_state.users.items():
     if udata.get("status") == "Blocked" or udata.get("blocked", False):
@@ -467,7 +464,6 @@ def update_star_players():
 
 
 def check_and_publish_attendance_notice():
-  """উপস্থিতির নোটিশ স্বয়ংক্রিয়ভাবে পাবলিশ এবং পারমানেন্ট সেভ করা"""
   active_users = get_active_unblocked_users()
   poll_data = st.session_state.get("match_availability_poll", {})
 
@@ -604,6 +600,7 @@ def login_register_surface():
           "Personal AI Custom Name*", value="Jarvis", key="reg_pai"
       ).strip()
 
+      # প্রথম একাউন্ট খুললে সে স্বয়ংক্রিয়ভাবে Superadmin হবে
       is_first_user = len(st.session_state.users) == 0
       if is_first_user:
         st.info("ℹ️ First user automatically granted Superadmin (S.A) role.")
@@ -663,6 +660,7 @@ def login_register_surface():
               "gk_saves": 0,
           }
 
+          # পারমানেন্ট সেভ
           save_data_to_file()
           st.success(
               "Registration successful! Your ID is saved permanently. Please"
@@ -793,6 +791,12 @@ if (
         check_and_publish_attendance_notice()
 
       st.rerun()
+
+# 👑 সুপার অ্যাডমিন প্যানেল রেন্ডার করার জন্য শর্ত (যদি সে S.A বা Admin হয়)
+if curr_user.get("role") in ["Superadmin", "Admin"]:
+  with st.sidebar.expander("👑 S.A & Admin Panel"):
+    render_sa_id_management_panel()
+      
         
 # ==========================================
 # 4. SIDEBAR & NAVIGATION
