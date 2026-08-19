@@ -1555,12 +1555,16 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
 elif nav_choice == "⭐ Teammate Ratings & Guide":
   st.header("⭐ Rate Teammates & Performance Guide")
 
-  # ইউজারনেম সেফলি রিড করা
-  active_curr_user = (
-      curr_user.get("username")
-      if "curr_user" in locals() and isinstance(curr_user, dict)
-      else st.session_state.get("curr_username", "")
-  )
+  # 🔍 বর্তমান লগইন ইউজার নিখুঁতভাবে বের করা
+  active_curr_user = ""
+  if "curr_user" in locals() and isinstance(curr_user, dict):
+    active_curr_user = curr_user.get("username", "")
+  if not active_curr_user:
+    active_curr_user = st.session_state.get(
+        "authenticated_user", st.session_state.get("curr_username", "")
+    )
+
+  clean_curr_user = str(active_curr_user).strip().lower()
 
   # 📘 Rating Guide Panel
   with st.expander("📘 Rating Guide Panel (Click to expand)", expanded=False):
@@ -1580,29 +1584,9 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
         ---
         ### ⚠️ Foul Rating Guide
         * **০:** একটি ফাউলও করেনি, একদম পরিচ্ছন্ন ও ফেয়ার প্লে বজায় রেখেছে।
-        * **১:** মাত্র ১টি সাধারণ ও হালকা ফাউল করেছে (কোনো কার্ড নেই)।
-        * **২:** ২টির মতো ছোটখাটো ফাউল করেছে, যেগুলো ট্যাকল বা বল দখলের চেষ্টা ছিল।
-        * **৩:** বেশ কয়েকটি ছোট ফাউল করেছে, রেফারি মৌখিক সতর্কবার্তা দিয়েছেন।
-        * **৪:** বারবার ফাউল করায় রেফারি শেষ সতর্কবার্তা (Final Warning) দিয়েছেন।
-        * **৫:** আক্রমণ থামানোর জন্য কৌশলগত বা একটু কঠিন ফাউল করে হলুদ কার্ড খেয়েছে।
-        * **৬:** ম্যাচে ২টি আলাদা ফাউলের কারণে ১টি হলুদ কার্ড পেয়েছে।
-        * **৭:** ক্রমাগত বা ফাউলের ওপর ফাউল করে দলকে ঝুঁকিতে ফেলেছে।
-        * **৮:** বিপজ্জনক বা খারাপ ট্যাকল করে সরাসরি লাল কার্ড পেয়ে মাঠ ছেড়েছে।
-        * **৯:** চরম সহিংস বা উগ্র আচরণ করে ফাউল এবং সরাসরি লাল কার্ড খেয়েছে।
-        * **১০:** ম্যাচের সবচেয়ে বেশি বা ক্ষতিকর ফাউলকারী (বিপজ্জনক ফাউল + লাল কার্ড + পেনাল্টি দেওয়া)।
-
-        ---
-        ### 🧤 Goalkeeper (GK) Rating Guide
-        * **১০.০:** অবিশ্বসনীয় বা ম্যাচজেতানো সেভ (যেমন: শেষ মুহূর্তে পেনাল্টি সেভ বা ৪+ নিশ্চিত গোল বাঁচানো)।
-        * **৯.০ - ৯.৯:** একের পর এক দুর্দান্ত সেভ করে দলকে একাই জয় এনে দেওয়া।
-        * **৮.০ - ৮.৯:** অন্তত ৩-৪টি নিশ্চিত গোলের সেভ এবং ক্লিন শিট (Clean Sheet) বজায় রাখা।
-        * **৭.০ - ৭.৯:** নির্ভরযোগ্য পারফরম্যান্স, সাধারণ সেভগুলো ঠিকঠাক করা এবং বড় কোনো ভুল না করা।
-        * **৬.০ - ৬.৯:** গড়পড়তা খেলা (ম্যাচ শুরুর বেস পয়েন্ট), যেখানে গোলরক্ষককে খুব বেশি পরীক্ষা দিতে হয়নি।
-        * **৫.০ - ৫.৯:** দুর্বল শট ক্লিয়ার করতে না পারা বা নিজের পজিশনিংয়ে হালকা ভুল থাকা।
-        * **৪.০ - ৪.৯:** সহজ বলে হাত থেকে মিস করে বিপদ বাড়ানো বা বাজে পেনাল্টি দেওয়া।
-        * **৩.০ - ৩.৯:** সহজ শটে গোল হজম করা এবং পাসিংয়ে বারবার ভুল করা।
-        * **১.০ - ২.৯:** মারাত্মক ভুল (Howler) করে গোল খাওয়া বা লাল কার্ড পেয়ে মাঠ ছাড়া।
-        * **০.০:** চরম বিপর্যয়কর পারফরম্যান্স (যেমন: একাধিক বাজে ভুল এবং আত্মঘাতী গোলে ম্যাচ হারানো)।
+        * **১-২:** হালকা ফাউল বা বল দখলের চেষ্টা।
+        * **৩-৫:** বারবার ফাউল বা হলুদ কার্ড খাওয়া।
+        * **৮-১০:** লাল কার্ড, সরাসরি পেনাল্টি দেওয়া বা ক্ষতিকর ফাউল।
         """)
 
   st.markdown("---")
@@ -1615,62 +1599,123 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
       else st.session_state.get("users", {})
   )
 
-  # 🚫 কঠোর ফিল্টারিং: নিজের নাম সম্পূর্ণ বাদ দিয়ে সতীর্থদের তালিকা তৈরি
+  # 🚫 নিজের নাম সম্পূর্ণ বাদ দিয়ে সতীর্থদের তালিকা তৈরি
   targets = [
       u
       for u in active_users.keys()
-      if str(u).strip().lower() != str(active_curr_user).strip().lower()
+      if str(u).strip().lower() != clean_curr_user
   ]
 
   if not targets:
-    st.warning("⚠️ আপনার নিজের অ্যাকাউন্ট ছাড়া রেটিং দেওয়ার মতো অন্য কোনো সক্রিয় সতীর্থ পাওয়া যায়নি।")
+    st.warning(
+        "⚠️ আপনার নিজের অ্যাকাউন্ট ছাড়া রেটিং দেওয়ার মতো অন্য কোনো সক্রিয় সতীর্থ"
+        " পাওয়া যায়নি।"
+    )
   else:
-    # সেশন স্টেটে ratings_db নিশ্চিত করা
     if "ratings_db" not in st.session_state:
       st.session_state.ratings_db = {}
 
-    # প্লেয়ার সিলেকশন বক্স (নিজের নাম এখানে থাকবে না)
     target = st.selectbox(
         "Select Teammate to Rate:",
         options=targets,
         format_func=lambda x: (
             f"{active_users[x].get('full_name', x)} (`@{x}`)"
         ),
+        key="sel_rate_target",
     )
 
-    # পূর্ববর্তী রেটিং ডাটা সেফলি লোড
     prev = st.session_state.ratings_db.get(
         (active_curr_user, target), {"rating": 6.0, "fouls": 0}
     )
 
-    # ফর্ম হ্যান্ডলার
     with st.form(key=f"rating_form_{target}"):
       new_r = st.slider(
-          "Rating (0.0 - 10.0)", 0.0, 10.0, float(prev.get("rating", 6.0)), 0.1
+          "Base Rating (0.0 - 10.0)",
+          0.0,
+          10.0,
+          float(prev.get("rating", 6.0)),
+          0.1,
       )
       new_f = st.number_input(
-          "Fouls (0 - 10)", 0, 10, int(prev.get("fouls", 0)), 1
+          "Fouls Committed (0 - 10)", 0, 10, int(prev.get("fouls", 0)), 1
       )
 
       submit_btn = st.form_submit_button(
-          "💾 Save/Correct Rating", type="primary"
+          "💾 Save & Calculate Final Rating", type="primary"
       )
 
       if submit_btn:
-        # 🚫 ব্যাকএন্ড সিকিউরিটি চেক: নিজেকে রেটিং দেওয়ার সুযোগ প্রতিরোধ করা
-        if str(target).strip().lower() == str(active_curr_user).strip().lower():
-          st.error("❌ আপনি নিজেকে রেটিং দিতে পারবেন না! শুধুমাত্র সতীর্থদের রেটিং দিন।")
+        selected_target_clean = str(target).strip().lower()
+
+        # 🚫 ব্যাকএন্ড সিকিউরিটি চেক: নিজেকে রেটিং দেওয়ার চেষ্টা পুরোপুরি ব্লক
+        if selected_target_clean == clean_curr_user:
+          st.error(
+              "❌ আপনি নিজেকে রেটিং দিতে পারবেন না! শুধুমাত্র সতীর্থদের রেটিং দিন।"
+          )
         else:
+          # ১. ইউজারের দেওয়া রেটিং ও ফাউল সেভ
           st.session_state.ratings_db[(active_curr_user, target)] = {
               "rating": round(new_r, 2),
               "fouls": new_f,
           }
 
+          # ---------------------------------------------------------
+          # 🧮 অ্যাডমিন প্যানেল + সতীর্থের রেটিং মিলিয়ে ১০-এ ফাইনাল রেটিং গণনা
+          # ---------------------------------------------------------
+          pstats = st.session_state.get("player_stats", {}).get(target, {})
+
+          goals = pstats.get("goals", 0)
+          assists = pstats.get("assists", 0)
+          gk_saves = pstats.get("gk_saves", 0)
+          conceded_pen = pstats.get("conceded_penalty", 0.0)
+
+          # সতীর্থদের গড় রেটিং ও ফাউল হিসাব
+          all_ratings_for_target = [
+              v["rating"]
+              for k, v in st.session_state.ratings_db.items()
+              if k[1] == target
+          ]
+          all_fouls_for_target = [
+              v["fouls"]
+              for k, v in st.session_state.ratings_db.items()
+              if k[1] == target
+          ]
+
+          avg_teammate_rating = (
+              sum(all_ratings_for_target) / len(all_ratings_for_target)
+              if all_ratings_for_target
+              else 6.0
+          )
+          avg_fouls = (
+              sum(all_fouls_for_target) / len(all_fouls_for_target)
+              if all_fouls_for_target
+              else 0
+          )
+
+          # অ্যাডমিন প্যানেলের পারফরম্যান্স বোনাস ও পেনাল্টি
+          bonus_points = (
+              (goals * 0.8) + (assists * 0.5) + (gk_saves * 0.3)
+          )  # গোল, অ্যাসিস্ট ও সেভ বোনাস
+          penalty_points = (avg_fouls * 0.2) + (
+              conceded_pen * 0.5
+          )  # ফাউল ও পেনাল্টির জন্য পয়েন্ট কাটা
+
+          # ১০ এর মধ্যে ক্যাপ করা ফাইনাল ক্যালকুলেশন
+          calc_rating = avg_teammate_rating + bonus_points - penalty_points
+          final_10_rating = round(max(0.0, min(10.0, calc_rating)), 2)
+
+          # সেশন স্টেটের মেইন ইউজারে ফাইনাল রেটিং সেভ
+          if "users" in st.session_state and target in st.session_state.users:
+            st.session_state.users[target]["rating"] = final_10_rating
+
           if "save_data_to_file" in globals():
             save_data_to_file()
 
           target_name = active_users[target].get("full_name", target)
-          st.success(f"✅ Rating for {target_name} saved successfully!")
+          st.success(
+              f"✅ Rating for {target_name} saved! Overall Calculated Rating:"
+              f" ⭐ **{final_10_rating}/10.0**"
+          )
           st.rerun()
           
 # ==========================================
@@ -1828,7 +1873,8 @@ elif nav_choice == "💬 Club House Group Chat":
       st.rerun()
     else:
       st.warning("⚠️ Please type a message before sending.")
-        # ==========================================
+        
+# ==========================================
 # 13. FOOTBALL AI (PUBLIC) - LOCAL KNOWLEDGE BASE
 # ==========================================
 elif nav_choice == "🤖 Football AI (Public)":
@@ -2265,7 +2311,7 @@ elif nav_choice == "👤 Personal AI (Private)":
 
   st.divider()
 
- # -------------------------------------------------------------
+# -------------------------------------------------------------
   # 🗳️ SUNDAY MOTM POLL
   # -------------------------------------------------------------
   st.subheader("🗳️ Sunday MOTM Poll")
@@ -2276,18 +2322,23 @@ elif nav_choice == "👤 Personal AI (Private)":
   else:
     active_users = st.session_state.get("users", {})
 
-  # বর্তমান লগইন করা ইউজারের ইউজারনেম বের করা
-  active_curr_user = (
-      curr_user.get("username")
-      if "curr_user" in locals() and isinstance(curr_user, dict)
-      else st.session_state.get("authenticated_user", "")
-  )
+  # 🔍 বর্তমান ইউজারনেম নিশ্চিত করার নিরাপদ উপায়
+  active_curr_user = ""
+  if "curr_user" in locals() and isinstance(curr_user, dict):
+    active_curr_user = curr_user.get("username", "")
+  if not active_curr_user:
+    active_curr_user = st.session_state.get(
+        "authenticated_user", st.session_state.get("curr_username", "")
+    )
 
-  # 🚫 কঠোর ফিল্টারিং: নিজের নাম সম্পূর্ণ বাদ দিয়ে প্রার্থী তালিকা তৈরি
+  # স্ট্রিপ ও লোয়ারকেস করে নিশ্চিত নাম বের করা
+  clean_curr_user = str(active_curr_user).strip().lower()
+
+  # 🚫 নিজের নাম সম্পূর্ণ বাদ দিয়ে প্রার্থী তালিকা তৈরি
   motm_candidates = [
       u
       for u in active_users.keys()
-      if str(u).strip().lower() != str(active_curr_user).strip().lower()
+      if str(u).strip().lower() != clean_curr_user
   ]
 
   if not motm_candidates:
@@ -2306,14 +2357,22 @@ elif nav_choice == "👤 Personal AI (Private)":
     )
 
     if st.button("Submit Vote", key="btn_motm"):
-      # 🚫 ব্যাকএন্ড সিকিউরিটি চেক: নিজেকে ভোট দেওয়ার চেষ্টা রোধ করা
-      if str(vote).strip().lower() == str(active_curr_user).strip().lower():
+      selected_vote_clean = str(vote).strip().lower()
+
+      # 🚫 কঠোর ব্যাকএন্ড চেক: নিজের নাম হলে ব্লক করবে
+      if selected_vote_clean == clean_curr_user:
         st.error(
             "❌ আপনি নিজেকে MOTM ভোট দিতে পারবেন না! অন্য কোনো সতীর্থকে বেছে"
             " নিন।"
         )
       else:
-        st.session_state.motm_votes[active_curr_user] = vote
+        if "motm_votes" not in st.session_state:
+          st.session_state.motm_votes = {}
+
+        # সেশন স্টেটে ভোট সেভ (মূল ইউজারনেম দিয়ে)
+        st.session_state.motm_votes[
+            st.session_state.get("authenticated_user", active_curr_user)
+        ] = vote
 
         if "save_data_to_file" in globals():
           save_data_to_file()
