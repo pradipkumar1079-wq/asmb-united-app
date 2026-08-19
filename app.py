@@ -9,15 +9,6 @@ import io
 import json
 import os
 import base64
-import google.generativeai as genai
-
-# Google Generative AI সেফ ইমপোর্ট
-try:
-  import google.generativeai as genai
-
-  HAS_GENAI = True
-except ModuleNotFoundError:
-  HAS_GENAI = False
     
 # ==========================================
 # 0. PAGE CONFIGURATION (MUST BE FIRST)
@@ -916,7 +907,7 @@ if curr_user.get("status") == "Blocked":
     st.stop()
 
 # ==========================================
-# 6. NOTICE BOARD & COMMENTS (WITH POLL VOTE)
+# 6. NOTICE BOARD & COMMENTS (WITH POLL & SQUAD DISPLAY)
 # ==========================================
 if nav_choice == "📌 Notice Board & News":
   st.header("📌 Official Notice Board")
@@ -939,6 +930,36 @@ if nav_choice == "📌 Notice Board & News":
           f"📢 {title} - {timestamp} (By: {author})", expanded=(idx == 0)
       ):
         st.markdown(notice.get("content", ""))
+
+        # ------------------------------------------
+        # ⚽ Published Squad Display (Auto Player Image & Name)
+        # ------------------------------------------
+        squad_players = notice.get("squad_players", [])
+        if squad_players and isinstance(squad_players, list):
+          st.markdown("---")
+          st.markdown("### ⚽ Match Day Squad")
+
+          all_users = st.session_state.get("users", {})
+          cols = st.columns(2)  # ২ কলামের গ্রিডে দেখাবে
+
+          for p_idx, u_name in enumerate(squad_players):
+            player_info = all_users.get(u_name, {})
+            p_name = player_info.get("full_name", u_name)
+            p_img = (
+                player_info.get("profile_pic_url")
+                or player_info.get("image")
+                or "default_logo.png"
+            )
+
+            with cols[p_idx % 2]:
+              with st.container():
+                c1, c2 = st.columns([1, 3])
+                with c1:
+                  st.image(p_img, width=60)
+                with c2:
+                  st.markdown(f"**{p_name}**")
+                  st.caption(f"@{u_name}")
+                st.divider()
 
         # ------------------------------------------
         # 📊 Poll Voting Section
@@ -1016,7 +1037,9 @@ if nav_choice == "📌 Notice Board & News":
         st.markdown("---")
         st.markdown("##### 💬 Comments")
 
-        if "comments" not in notice or not isinstance(notice["comments"], list):
+        if "comments" not in notice or not isinstance(
+            notice["comments"], list
+        ):
           notice["comments"] = []
 
         comments = notice["comments"]
@@ -1037,7 +1060,7 @@ if nav_choice == "📌 Notice Board & News":
             })
             save_data_to_file()
             st.rerun()
-                                      
+            
 # ==========================================
 # 7. PLAYER DIRECTORY & SPECIAL ROSTERS (WITH SERIAL NUMBERS)
 # ==========================================
@@ -1855,9 +1878,8 @@ elif nav_choice == "💬 Club House Group Chat":
       st.rerun()
     else:
       st.warning("⚠️ Please type a message before sending.")
-        
-# ==========================================
-# 13. FOOTBALL AI (PUBLIC) WITH GEMINI INTEGRATION
+        # ==========================================
+# 13. FOOTBALL AI (PUBLIC) - LOCAL KNOWLEDGE BASE
 # ==========================================
 elif nav_choice == "🤖 Football AI (Public)":
   st.header("🤖 Football AI (Public - Tactics Only)")
@@ -1906,13 +1928,14 @@ elif nav_choice == "🤖 Football AI (Public)":
   if st.button("Ask Football AI", key="btn_fai", type="primary"):
     if p.strip():
       text = p.strip()
+      text_lower = text.lower()
       resp = ""
 
       # Anti-link and Anti-Scraping Feature
       if (
           re.search(r"http[s]?://|www\.", text)
-          or "link" in text.lower()
-          or ("feature" in text.lower() and "app" in text.lower())
+          or "link" in text_lower
+          or ("feature" in text_lower and "app" in text_lower)
       ):
         resp = (
             "নিরাপত্তাজনিত কারণে অ্যাপের কোনো লিংক বা অভ্যন্তরীণ ফিচার ও"
@@ -1921,8 +1944,18 @@ elif nav_choice == "🤖 Football AI (Public)":
 
       # ফুটবলের বাইরের প্রশ্ন চেক
       elif any(
-          k in text.lower()
-          for k in ["weather", "recipe", "math", "code", "movie", "song"]
+          k in text_lower
+          for k in [
+              "weather",
+              "recipe",
+              "math",
+              "code",
+              "movie",
+              "song",
+              "আবহাওয়া",
+              "রান্না",
+              "গণিত",
+          ]
       ):
         resp = (
             "এটি ফুটবলের বাইরে প্রশ্ন। প্রশ্নটি স্বয়ংক্রিয়ভাবে আপনার"
@@ -1938,42 +1971,127 @@ elif nav_choice == "🤖 Football AI (Public)":
             "timestamp": datetime.datetime.now().strftime("%I:%M %p"),
         })
 
-      # ফুটবল ট্যাকটিক্স প্রশ্ন
+      # ফুটবল ট্যাকটিক্স ও জ্ঞানভাণ্ডার (Local Knowledge Engine)
       else:
-        # --- GEMINI INTEGRATION HERE ---
-        try:
-          api_key = st.secrets.get("GEMINI_API_KEY", None)
-
-          if api_key:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-
-            tactical_prompt = (
-                "তুমি একজন বিশেষজ্ঞ ফুটবল ট্যাকটিশিয়ান এবং কোচ। "
-                "শুধুমাত্র ফুটবল ট্যাকটিক্স, স্ট্র্যাটেজি, পজিশন বিশ্লেষণ ও"
-                " ফর্মেশন সংক্রান্ত "
-                "সংক্ষিপ্ত, স্পষ্ট ও কার্যকর উত্তর দাও। "
-                f"ব্যবহারকারীর প্রশ্ন: {text}"
-            )
-
-            with st.spinner("AI ট্যাকটিক্স বিশ্লেষণ করছে..."):
-              response = model.generate_content(tactical_prompt)
-              resp = response.text
-          else:
-            resp = (
-                f"'{text}' সম্পর্কিত ট্যাকটিক্যাল পরামর্শ: ফর্মেশন কমপ্যাক্ট"
-                " রাখুন, হাই-প্রেসিং করুন এবং উইং দিয়ে দ্রুত কাউন্টার অ্যাটাকে"
-                " যান।"
-            )
-
-        except Exception:
-          # API-তে সমস্যা বা কোটা লিমিট ওভার হলে ব্যাকআপ উত্তর
+        # ১. ফর্মেশন সম্পর্কিত প্রশ্ন (4-3-3, 4-2-3-1, 3-5-2 ইত্যাদি)
+        if any(f in text_lower for f in ["4-3-3", "433"]):
           resp = (
-              f"'{text}' সম্পর্কিত ট্যাকটিক্যাল পরামর্শ: ফর্মেশন কমপ্যাক্ট"
-              " রাখুন, হাই-প্রেসিং করুন এবং উইং দিয়ে দ্রুত কাউন্টার অ্যাটাকে"
-              " যান।"
+              "**4-3-3 Formation Analysis:** এটি একটি আক্রমণাত্মক"
+              " ফর্মেশন। উইঙ্গারদের হাই-পজিশনিং এবং মিডফিল্ডের ত্রিভুজ পাসের"
+              " (Triangle passing) মাধ্যমে পজেশন ধরে রাখতে সাহায্য করে। ডিফেন্সে"
+              " হাই-প্রেসের জন্য এটি সেরা।"
+          )
+        elif any(f in text_lower for f in ["4-2-3-1", "4231"]):
+          resp = (
+              "**4-2-3-1 Formation Analysis:** আধুনিক ফুটবলের অন্যতম সুসংগঠিত"
+              " স্ট্রাকচার। দুজন 'Double Pivot' ডিফেন্সিভ মিডফিল্ডার ব্যাকলাইনকে"
+              " সুরক্ষা দেয় এবং নম্বর ১০ (CAM) প্লেয়ার আক্রমণের নিয়ন্ত্রণ নেয়।"
+          )
+        elif any(f in text_lower for f in ["3-5-2", "352", "5-3-2"]):
+          resp = (
+              "**3-5-2 / Wing-back Dynamics:** মিডফিল্ডের আধিপত্য এবং ওভারল্যাপিং"
+              " উইং-ব্যাক দিয়ে প্রতিপক্ষের ওপর চাপ সৃষ্টি করে। ব্যাকলাইনে ৩ জন"
+              " সেন্টার ব্যাক থাকায় সেন্ট্রাল ডিফেন্স খুব শক্ত থাকে।"
+          )
+        elif any(f in text_lower for f in ["4-4-2", "442"]):
+          resp = (
+              "**Classic 4-4-2:** এটি ট্র্যাডিশনাল ডিফেন্সিভ ব্লকিং এবং কাউন্টার"
+              " অ্যাটাকের জন্য দারুণ। দুটি স্ট্রাইকার থাকার কারণে ডায়রেক্ট ফুটবল"
+              " খেলতে সুবিধা হয়।"
           )
 
+        # ২. ট্যাকটিক্যাল স্টাইল
+        elif any(
+            k in text_lower
+            for k in ["tiki taka", "tikitaka", "tiki-taka", "টিকিটাকা"]
+        ):
+          resp = (
+              "**Tiki-Taka Tactics:** সংক্ষিপ্ত পাস, দ্রুত পজিশন পরিবর্তন এবং"
+              " বল পজেশন ধরে রাখার কৌশল। এর মূল লক্ষ্য হলো পাসিংয়ের মাধ্যমে"
+              " প্রতিপক্ষের ডিফেন্সে ফাঁকা জায়গা (Space) তৈরি করা।"
+          )
+        elif any(
+            k in text_lower
+            for k in ["gegenpressing", "gegenpress", "গেগেনপ্রেসিং"]
+        ):
+          resp = (
+              "**Gegenpressing (Counter-pressing):** বল হারানোর সাথে সাথে ৩-৫"
+              " সেকেন্ডের মধ্যে প্রতিপক্ষকে চেপে ধরে বল পুনরুদ্ধার করার কৌশল।"
+              " জার্মানি ও ইয়ুর্গেন ক্লপের দলের অন্যতম প্রধান হাতিয়ার।"
+          )
+        elif any(
+            k in text_lower
+            for k in [
+                "counter attack",
+                "counter-attack",
+                "কাউন্টার",
+                "fast attack",
+            ]
+        ):
+          resp = (
+              "**Counter-Attacking Strategy:** প্রতিপক্ষের আক্রমণ ভেঙে যাওয়ার"
+              " সাথে সাথেই দ্রুত উইং দিয়ে দীর্ঘ ও দ্রুত পাসের মাধ্যমে আক্রমণ"
+              " চালানো। কম সময়ের মধ্যে গোল করার সবচেয়ে কার্যকর কৌশল।"
+          )
+        elif any(
+            k in text_lower
+            for k in ["park the bus", "defensive", "ডিফেন্স", "ডিফেন্সিভ"]
+        ):
+          resp = (
+              "**Low Block / Solid Defense:** নিজের পেনাল্টি বক্সের সামনে শক্ত"
+              " প্রতিরক্ষামূলক লাইন তৈরি করে প্রতিপক্ষকে শট নেওয়া থেকে বিরত রাখা।"
+              " এটি সাধারণত প্রতিপক্ষ দল শক্তিশালী হলে প্রয়োগ করা হয়।"
+          )
+
+        # ৩. প্লেয়ার রোল ও পজিশনিং
+        elif any(
+            k in text_lower
+            for k in ["offside", "offside trap", "অফসাইড", "offside rule"]
+        ):
+          resp = (
+              "**Offside Rule & Trap:** আক্রমণকারী খেলোয়াড় বল পাস করার মুহূর্তে"
+              " প্রতিপক্ষের শেষ দুজন খেলোয়াড়ের (গোলরক্ষকসহ) সামনে থাকলে তা"
+              " অফসাইড। ডিফেন্ডাররা একলাইনে উঠে প্রতিপক্ষকে অফসাইড ট্র্যাপে ফেলার"
+              " কৌশল ব্যবহার করে।"
+          )
+        elif any(
+            k in text_lower
+            for k in [
+                "inverted winger",
+                "winger",
+                "উইঙ্গার",
+                "wing back",
+                "wingback",
+            ]
+        ):
+          resp = (
+              "**Inverted Winger Dynamics:** ডানপায়ের প্লেয়ার বাম উইঙে বা"
+              " বামপায়ের প্লেয়ার ডান উইঙে খেলে ইনসাইডে কাট-ইন (Cut-in) করে শট"
+              " নিতে সাহায্য করে। ওভারল্যাপিং ফুলব্যাকদের জন্য জায়গা তৈরি করতে এটি"
+              " দারুণ।"
+          )
+        elif any(
+            k in text_lower
+            for k in ["false 9", "false9", "ফোল্স নাইন", "false nine"]
+        ):
+          resp = (
+              "**False 9 Role:** সেন্ট্রাল স্ট্রাইকার বক্সের ভেতর না থেকে"
+              " মিডফিল্ডে নেমে আসে। এর ফলে প্রতিপক্ষের সেন্টার-ব্যাকরা বিভ্রান্ত"
+              " হয় এবং উইঙ্গারদের জন্য বক্সে ঢোকার খালি জায়গা তৈরি হয়।"
+          )
+
+        # ৪. সাধারণ ফুটবল ট্যাকটিক্স (ডিফল্ট স্ট্র্যাটেজিক উত্তর)
+        else:
+          resp = (
+              f"**'{text}' সম্পর্কিত ট্যাকটিক্যাল টিপস:**\n"
+              "১. **Formational Line:** ফর্মেশন কমপ্যাক্ট রাখুন যেন সেন্ট্রাল স্পেস"
+              " বন্ধ থাকে।\n"
+              "২. **Pressing Zone:** মিড-ব্লকে প্রেস তৈরি করে বল পুনরুদ্ধার করুন।\n"
+              "৩. **Transition:** দ্রুত উইং প্লেয়ারদের ব্যবহার করে কাউন্টার"
+              " অ্যাটাকে যান।"
+          )
+
+      # চ্যাট হিস্ট্রিতে সেভ ও রান করা
       st.session_state.football_ai_chats.append({
           "sender": user_fullname,
           "prompt": text,
@@ -1987,9 +2105,8 @@ elif nav_choice == "🤖 Football AI (Public)":
       st.rerun()
     else:
       st.warning("⚠️ Please enter a question first.")
-        
-# ==========================================
-# 14. PERSONAL AI & MOTM VOTING WITH GEMINI INTEGRATION
+        # ==========================================
+# 14. PERSONAL AI & MOTM VOTING (LOCAL KNOWLEDGE ENGINE)
 # ==========================================
 elif nav_choice == "👤 Personal AI (Private)":
   # ১. ইউজার ডাটা সেফলি রিড করা
@@ -2035,48 +2152,151 @@ elif nav_choice == "👤 Personal AI (Private)":
   if st.button("Send", key="btn_pai", type="primary"):
     if p.strip():
       text = p.strip()
+      text_lower = text.lower()
       resp = ""
 
       # Anti-link and Anti-Scraping Feature
       if re.search(r"http[s]?://|www\.", text) or (
-          "link" in text.lower() and "feature" in text.lower()
+          "link" in text_lower and "feature" in text_lower
       ):
         resp = (
             "দুঃখিত, কোনো অ্যাপ লিংক থেকে তথ্য বা ফিচার বিশ্লেষণ করা আমার জন্য"
             " নিষিদ্ধ।"
         )
       else:
-        # --- GEMINI INTEGRATION HERE ---
-        try:
-          api_key = st.secrets.get("GEMINI_API_KEY", None)
+        # --- LOCAL GENERAL INTEL ASSISTANT ---
 
-          if api_key:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-
-            personal_prompt = (
-                f"তোমার নাম {pai_name}। তুমি {user_fullname}-এর একজন অত্যন্ত"
-                " বিশ্বস্ত এবং সাহায্যকারী ব্যক্তিগত সহকারী (Personal AI"
-                " Assistant)। তোমার কাজ হলো যেকোনো সাধারণ প্রশ্ন, পড়াশোনা,"
-                " টেকনোলজি, প্ল্যানিং কিংবা ফিটনেস সংক্রান্ত বিষয়ে সম্পূর্ণ"
-                " বাংলা ভাষায় বন্ধুসুলভ ও বুদ্ধিমত্তার সাথে উত্তর দেওয়া।"
-                f" ব্যবহারকারীর প্রশ্ন: {text}"
-            )
-
-            with st.spinner(f"{pai_name} উত্তর তৈরি করছে..."):
-              response = model.generate_content(personal_prompt)
-              resp = response.text
-          else:
-            resp = (
-                f"হ্যালো {user_fullname}! আপনার প্রশ্ন: '{text}'। বাংলা ভাষায়"
-                " যেকোনো তথ্যে আমি সাহায্য করতে পারি।"
-            )
-
-        except Exception:
-          # API-তে সমস্যা হলে ব্যাকআপ উত্তর
+        # ১. সাধারণ অভিবাদন ও কুশল বিনিময়
+        if any(
+            k in text_lower
+            for k in [
+                "hi",
+                "hello",
+                "কেমন আছ",
+                "কেমন আছেন",
+                "হ্যালো",
+                "হাই",
+                "assalamu alaikum",
+                "সালাম",
+            ]
+        ):
           resp = (
-              f"হ্যালো {user_fullname}! আপনার প্রশ্ন: '{text}'। বাংলা ভাষায়"
-              " যেকোনো তথ্যে আমি সাহায্য করতে পারি।"
+              f"হ্যালো {user_fullname}! আমি আপনার পার্সোনাল অ্যাসিস্ট্যান্ট"
+              f" **{pai_name}**। আমি আপনাকে যেকোনো সাধারণ প্রশ্ন, প্ল্যানিং বা"
+              " পড়াশোনায় সাহায্য করতে পারি। বলুন, আজ কীভাবে সাহায্য করতে পারি?"
+          )
+
+        # ২. পরিচয় বা নাম সম্পর্কিত প্রশ্ন
+        elif any(
+            k in text_lower
+            for k in [
+                "who are you",
+                "your name",
+                "তোমার নাম",
+                "তুমি কে",
+                "পরিচয়",
+            ]
+        ):
+          resp = (
+              f"আমি **{pai_name}**, আপনার নিজস্ব স্মার্ট পার্সোনাল AI"
+              " অ্যাসিস্ট্যান্ট। আপনার দৈনন্দিন কাজ, পরামর্শ এবং যেকোনো সাধারণ"
+              " প্রশ্নের উত্তর দেওয়ার জন্য আমি প্রস্তুত।"
+          )
+
+        # ৩. সময়, রুটিন বা প্ল্যানিং
+        elif any(
+            k in text_lower
+            for k in [
+                "routine",
+                "plan",
+                "schedule",
+                "রুটিন",
+                "প্ল্যান",
+                "সময়সূচী",
+                "time management",
+            ]
+        ):
+          resp = (
+              f"প্রিয় {user_fullname}, একটি ভালো রুটিনের জন্য প্রতিদিনের কাজকে"
+              " ৩টি ধাপে ভাগ করুন:\n"
+              "১. **Most Important Tasks (MITs):** সকালে সবচেয়ে জরুরি ২টি কাজ শেষ"
+              " করুন।\n"
+              "২. **Pomodoro Focus:** ২৫ মিনিট মনোযোগ দিয়ে কাজ করে ৫ মিনিট বিরতি"
+              " নিন।\n"
+              "৩. **Review:** দিন শেষে ১০ মিনিট পুরো দিনের কাজের হিসাব করুন।"
+          )
+
+        # ৪. ফিটনেস ও স্বাস্থ্য টিপস
+        elif any(
+            k in text_lower
+            for k in [
+                "fitness",
+                "diet",
+                "exercise",
+                "health",
+                "স্বাস্থ্য",
+                "ব্যায়াম",
+                "খাবার",
+                "ওজন",
+            ]
+        ):
+          resp = (
+              "**স্বাস্থ্যকর লাইফস্টাইল টিপস:**\n"
+              "• **হাইড্রেটেড থাকুন:** প্রতিদিন অন্তত ২.৫ থেকে ৩ লিটার পানি পান"
+              " করুন।\n"
+              "• **নিয়মিত শরীরচর্চা:** প্রতিদিন অন্তত ২০-৩০ মিনিট হাঁটা বা হালকা"
+              " ফ্রি-হ্যান্ড এক্সারসাইজ করুন।\n"
+              "• **পরিমিত ঘুম:** রাতে ৭-৮ ঘণ্টা সুনিদ্রা নিশ্চিত করুন।"
+          )
+
+        # ৫. টেকনোলজি, স্টাডি বা কোডিং টিপস
+        elif any(
+            k in text_lower
+            for k in [
+                "study",
+                "code",
+                "programming",
+                "python",
+                "পড়াশোনা",
+                "পড়াশোনা",
+                "কৌশল",
+            ]
+        ):
+          resp = (
+              "**কার্যকর শেখার কৌশল (Feynman Technique):**\n"
+              "১. যেকোনো বিষয় সহজ ভাষায় অন্য কাউকে বোঝানোর চেষ্টা করুন।\n"
+              "২. যেখানে আটকে যাবেন, সেখানে মূল সোর্স বা বই দেখে কনসেপ্ট ক্লিয়ার"
+              " করুন।\n"
+              "৩. শেখার সাথে সাথে ছোট ছোট প্র্যাকটিক্যাল প্রজেক্ট তৈরি করুন।"
+          )
+
+        # ৬. মোটিভেশন ও মানসিক মানসিক উদ্দীপনা
+        elif any(
+            k in text_lower
+            for k in [
+                "motivation",
+                "depressed",
+                "sad",
+                "সহায়তা",
+                "হতাশ",
+                "ধৈর্য",
+                "ইনস্পায়ার",
+            ]
+        ):
+          resp = (
+              f"মনে রাখবেন {user_fullname}, সফলতা একদিনে আসে না। ছোট ছোট ধারাবাহিক"
+              " চেষ্টাই একদিন বড় পরিবর্তন আনে। আজকের দিনটিকে নিজের সেরাটা দিয়ে"
+              " কাজে লাগান!"
+          )
+
+        # ৭. অন্যান্য সাধারণ প্রশ্নের অল-রাউন্ড ব্যাকআপ
+        else:
+          resp = (
+              f"হ্যালো {user_fullname}! আপনার প্রশ্ন: **'{text}'**।\n\n"
+              f"আমি **{pai_name}**—আপনার এই প্রশ্নের বিষয়ে পরামর্শ হলো: যেকোনো"
+              " কাজের সফলতা নির্ভর করে সঠিক পরিকল্পনা এবং ধারাবাহিক চেষ্টার ওপর।"
+              " এ বিষয়ে আরও নির্দিষ্ট কোনো তথ্য জানতে চাইলে আমাকে নির্দ্বিধায়"
+              " বলুন!"
           )
 
       user_pchats.append({
