@@ -869,7 +869,7 @@ if nav_choice == "📌 Notice Board & News":
         st.markdown(notice.get("content", ""))
 
         # ------------------------------------------
-        # ⚽ Published Squad Display (Auto Player Image & Name)
+        # ⚽ Published Squad Display (With Name, Rating & Profile Picture)
         # ------------------------------------------
         squad_players = notice.get("squad_players", [])
         if squad_players and isinstance(squad_players, list):
@@ -882,20 +882,39 @@ if nav_choice == "📌 Notice Board & News":
           for p_idx, u_name in enumerate(squad_players):
             player_info = all_users.get(u_name, {})
             p_name = player_info.get("full_name", u_name)
-            p_img = (
-                player_info.get("profile_pic_url")
-                or player_info.get("image")
-                or "default_logo.png"
-            )
+
+            # 📊 ডাইনামিক রেটিং ক্যালকুলেট করা
+            if "compute_player_rating" in globals():
+              p_rating = compute_player_rating(u_name)
+            else:
+              p_rating = player_info.get("rating", 6.0)
+
+            # 🖼️ প্রোফাইল পিকচার হ্যান্ডলিং (Base64 -> URL -> Default Fallback)
+            photo_b64 = player_info.get("photo_b64")
+            p_img = None
+
+            if photo_b64:
+              try:
+                p_img = Image.open(io.BytesIO(base64.b64decode(photo_b64)))
+              except Exception:
+                p_img = None
+
+            if not p_img:
+              p_img = (
+                  player_info.get("profile_pic_url")
+                  or player_info.get("image")
+                  or "https://cdn-icons-png.flaticon.com/512/166/166344.png"  # ডিফল্ট ফুটবল প্লাগ-ইন আইকন
+              )
 
             with cols[p_idx % 2]:
               with st.container():
                 c1, c2 = st.columns([1, 3])
                 with c1:
-                  st.image(p_img, width=60)
+                  st.image(p_img, width=65)
                 with c2:
                   st.markdown(f"**{p_name}**")
                   st.caption(f"@{u_name}")
+                  st.markdown(f"⭐ **Rating:** `{p_rating:.1f} / 10.0`")
                 st.divider()
 
         # ------------------------------------------
@@ -915,7 +934,11 @@ if nav_choice == "📌 Notice Board & News":
           votes = notice["poll_votes"]
 
           # বর্তমান ইউজারের পূর্বের ভোট চেক করা
-          current_vote = votes.get(st.session_state.authenticated_user)
+          auth_user = st.session_state.get(
+              "authenticated_user",
+              curr_username if "curr_username" in locals() else "",
+          )
+          current_vote = votes.get(auth_user)
           default_index = (
               poll_options.index(current_vote)
               if current_vote in poll_options
@@ -932,7 +955,7 @@ if nav_choice == "📌 Notice Board & News":
           if st.button(
               "Submit Vote", key=f"btn_vote_{notice_id}_{idx}", type="primary"
           ):
-            votes[st.session_state.authenticated_user] = selected_option
+            votes[auth_user] = selected_option
             save_data_to_file()
             st.success(f"✅ Vote for '{selected_option}' submitted!")
             st.rerun()
@@ -1003,15 +1026,15 @@ if nav_choice == "📌 Notice Board & News":
 # ==========================================
 elif nav_choice == "👥 Player Directory & Roster":
   st.header("👥 Player Directory & Roster")
-  tab1, tab2, tab3 = st.tabs(
-      ["📋 Public Directory", "⭐ Star Players List", "🏥 Injured Players List"]
-  )
 
-  # একটিভ প্লেয়ারদের তালিকা ফেচ করা
+  # Injured tab বাদ দিয়ে ২টি ট্যাব তৈরি
+  tab1, tab2 = st.tabs(["📋 Public Directory", "⭐ Star Players List"])
+
+  # একটিভ প্লেয়ারদের তালিকা ফেচ করা
   active_users = (
       get_active_unblocked_users()
       if "get_active_unblocked_users" in globals()
-      else st.session_state.users
+      else st.session_state.get("users", {})
   )
 
   # ------------------------------------------
@@ -1019,7 +1042,7 @@ elif nav_choice == "👥 Player Directory & Roster":
   # ------------------------------------------
   with tab1:
     dir_data = []
-    # serial number সহ তালিকা তৈরি
+    # Serial number সহ তালিকা তৈরি
     for idx, (u, d) in enumerate(active_users.items(), 1):
       dir_data.append({
           "#": idx,
@@ -1035,59 +1058,41 @@ elif nav_choice == "👥 Player Directory & Roster":
       import pandas as pd
 
       df = pd.DataFrame(dir_data)
-      # Table-এর ডিফল্ট 0 ইনডেক্স লুকিয়ে # কলামটিকে সূচক হিসেবে ব্যবহার করা
+      # Table-এর ডিফল্ট 0 ইনডেক্স লুকিয়ে # কলামটিকে সূচক হিসেবে ব্যবহার করা
       st.dataframe(df.set_index("#"), use_container_width=True)
     else:
       st.info("No active players found.")
 
   # ------------------------------------------
-  # TAB 2: STAR PLAYERS LIST
+  # TAB 2: STAR PLAYERS LIST (Rating >= 8.00)
   # ------------------------------------------
   with tab2:
-    star_players = [
-        u for u, d in active_users.items() if d.get("is_star", False)
-    ]
-    if not star_players:
-      st.info("No star players at the moment.")
-    else:
-      # ১, ২, ৩ সিরিয়াল নম্বর দিয়ে স্টার প্লেয়ার প্রদর্শন
-      for idx, sp in enumerate(star_players, 1):
-        u = active_users[sp]
-        # রেটিং হিসাব করার ফাংশন নিরাপদে কল করা
-        if "compute_player_rating" in globals():
-          r = compute_player_rating(sp)
-        else:
-          r = "N/A"
+    star_found = False
+    count = 1
 
+    for sp, u in active_users.items():
+      # রেটিং নিরাপদে গণনা করা
+      if "compute_player_rating" in globals():
+        try:
+          r = float(compute_player_rating(sp))
+        except (ValueError, TypeError):
+          r = 0.0
+      else:
+        r = float(u.get("rating", 0.0))
+
+      # 🌟 শর্ত: রেটিং ৮.০০ বা তার বেশি হলে স্টার প্লেয়ার হিসেবে গণ্য হবে
+      if r >= 8.00:
+        star_found = True
         full_name = u.get("full_name", sp)
         position = u.get("position", "Unassigned")
         st.success(
-            f"{idx}. 🌟 **{full_name}** (`@{sp}`) - Position: {position} |"
-            f" Rating: **{r}**"
+            f"{count}. 🌟 **{full_name}** (`@{sp}`) - Position: {position} |"
+            f" Rating: **{r:.2f}**"
         )
+        count += 1
 
-  # ------------------------------------------
-  # TAB 3: INJURED PLAYERS LIST
-  # ------------------------------------------
-  with tab3:
-    injured_list = st.session_state.get("injured_players", [])
-    if not injured_list:
-      st.info("No injured players listed.")
-    else:
-      # ১, ২, ৩ নম্বর দিয়ে ইনজুরড প্লেয়ার প্রদর্শন
-      count = 1
-      for ip in injured_list:
-        if ip in active_users:
-          u = active_users[ip]
-          full_name = u.get("full_name", ip)
-          position = u.get("position", "Unassigned")
-          st.warning(
-              f"{count}. 🩹 **{full_name}** (`@{ip}`) - Position: {position}"
-          )
-          count += 1
-
-      if count == 1:
-        st.info("No active injured players found.")
+    if not star_found:
+      st.info("No star players with rating 8.00 or higher at the moment.")
                     
 # ==========================================
 # 8. MEMBER PHOTO GALLERY
@@ -2396,7 +2401,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
   # TAB 2: ROLES & PASSWORD
   # -------------------------------------------------------------
   with t2:
-    st.subheader("👑 Assign Position & Forced Password Reset")
+    st.subheader("👑 Assign Position, Admin Role & Forced Password Reset")
     user_list = list(st.session_state.users.keys())
 
     if not user_list:
@@ -2429,7 +2434,41 @@ elif nav_choice == "⚙️ Admin Control Panel":
           save_data_to_file()
         st.success(f"✅ Position for @{target_u} updated to {new_pos}!")
 
+      # 👑 SUPERADMIN ONLY: ADMIN PROMOTION / DEMOTION
       if user_role == "Superadmin":
+        st.divider()
+        st.markdown("### 👑 Admin Role Management (Superadmin Only)")
+
+        target_curr_role = st.session_state.users[target_u].get(
+            "role", "Member"
+        )
+        st.write(
+            f"Current Role for **@{target_u}**: `{target_curr_role}`"
+        )
+
+        role_options = ["Member", "Admin"]
+        default_role_idx = (
+            role_options.index(target_curr_role)
+            if target_curr_role in role_options
+            else 0
+        )
+
+        new_role = st.selectbox(
+            "Change System Role:", role_options, index=default_role_idx
+        )
+
+        if st.button("Update Role", key="btn_update_role", type="primary"):
+          if target_curr_role == "Superadmin":
+            st.error("❌ Superadmin role cannot be changed!")
+          else:
+            st.session_state.users[target_u]["role"] = new_role
+            if "save_data_to_file" in globals():
+              save_data_to_file()
+            st.success(
+                f"✅ Role for @{target_u} updated to **{new_role}**!"
+            )
+            st.rerun()
+
         st.divider()
         st.markdown("### 🔑 Force Change User Password")
         new_pass = st.text_input(
@@ -2498,14 +2537,16 @@ elif nav_choice == "⚙️ Admin Control Panel":
         user_msgs = [
             msg
             for msg in st.session_state.get("group_chat", [])
-            if msg.get("sender", "").endswith(f"(@{bu})") or bu in msg.get("sender", "")
+            if msg.get("sender", "").endswith(f"(@{bu})")
+            or bu in msg.get("sender", "")
         ]
 
         if user_msgs:
           last_msg = user_msgs[-1]
           st.info(
-              f"💬 **Last Message:** \"{last_msg.get('message', last_msg.get('text', ''))}\""
-              f" — *(Sent at {last_msg.get('timestamp', 'N/A')})*"
+              f"💬 **Last Message:**"
+              f" \"{last_msg.get('message', last_msg.get('text', ''))}\" —"
+              f" *(Sent at {last_msg.get('timestamp', 'N/A')})*"
           )
         else:
           st.caption("💬 No messages found from this user.")
@@ -2565,9 +2606,7 @@ elif nav_choice == "⚙️ Admin Control Panel":
   # -------------------------------------------------------------
   with t5:
     st.subheader("📋 Daily Player Attendance Sheet")
-    st.caption(
-        f"📅 Date: **{datetime.date.today().strftime('%B %d, %Y')}**"
-    )
+    st.caption(f"📅 Date: **{datetime.date.today().strftime('%B %d, %Y')}**")
 
     active_users = (
         get_active_unblocked_users()
@@ -2745,4 +2784,6 @@ elif nav_choice == "⚙️ Admin Control Panel":
         st.success("✅ Master Reset completed successfully!")
         st.rerun()
     else:
-      st.info("🔒 Master Reset option is strictly reserved for Superadmin only.")
+      st.info(
+          "🔒 Master Reset option is strictly reserved for Superadmin only."
+      )
