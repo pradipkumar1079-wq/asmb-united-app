@@ -30,7 +30,21 @@ def load_data_from_file():
   if os.path.exists(DB_FILE):
     try:
       with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+
+        # ------------------------------------------
+        # 🔑 AUTO ASSIGN FIRST REGISTERED USER AS SUPERADMIN
+        # ------------------------------------------
+        if data and "users" in data and isinstance(data["users"], dict):
+          users_dict = data["users"]
+          if users_dict:
+            # ডাটাবেজের ১ নম্বরে থাকা প্রথম ইউজারের key (username) বের করা
+            first_username = list(users_dict.keys())[0]
+
+            # ১ নম্বর ইউজারকে অটোমেটিক Superadmin ঘোষণা করা
+            users_dict[first_username]["role"] = "Superadmin"
+
+        return data
     except Exception as e:
       st.error(f"Error loading database file: {e}")
       pass
@@ -38,10 +52,17 @@ def load_data_from_file():
 
 
 def save_data_to_file():
-  """পরবর্তী সমস্ত নতুন আইডি এবং তথ্য স্থায়ীভাবে সংরক্ষণের ফাংশন"""
+  """পরবর্তী সমস্ত নতুন আইডি এবং তথ্য স্থায়ীভাবে সংরক্ষণের ফাংশন"""
+
+  # সেভ করার আগেও নিশ্চিত করা হচ্ছে যেন প্রথম রেজিস্টার্ড মেম্বার Superadmin থাকে
+  users_data = st.session_state.get("users", {})
+  if users_data and isinstance(users_data, dict):
+    first_user = list(users_data.keys())[0]
+    users_data[first_user]["role"] = "Superadmin"
+
   data_to_save = {
       "app_settings": st.session_state.get("app_settings", {}),
-      "users": st.session_state.get("users", {}),
+      "users": users_data,
       "ratings_db": {
           f"{k[0]}|||{k[1]}": v
           for k, v in st.session_state.get("ratings_db", {}).items()
@@ -70,7 +91,10 @@ def save_data_to_file():
 
 def delete_single_user_by_sa(username_to_delete):
   """সুপার অ্যাডমিন (s.a) দ্বারা নির্দিষ্ট আইডি স্থায়ীভাবে মুছে ফেলার লজিক"""
-  if "users" in st.session_state and username_to_delete in st.session_state["users"]:
+  if (
+      "users" in st.session_state
+      and username_to_delete in st.session_state["users"]
+  ):
     # ১. ইউজার প্রোফাইল ডিলিট
     del st.session_state["users"][username_to_delete]
 
@@ -114,16 +138,10 @@ def clear_all_data_by_sa():
 
 def render_sa_id_management_panel():
   """শুধু Super Admin (s.a) বা Admin এর জন্য আইডি ডিলিট করার UI Control Panel"""
-  # বর্তমান ইউজার সুপার অ্যাডমিন বা অ্যাডমিন কি না পরীক্ষা করা
   current_user = st.session_state.get("logged_in_user") or st.session_state.get(
       "user"
   )
-  user_role = st.session_state.get("user_role") or (
-      st.session_state.get("users", {}).get(current_user, {}).get("role")
-  )
 
-  # সেশনে যদি 's.a' বা 'admin' রোল থাকে তবেই এটি প্রদর্শন করবে
-  # (অন্যথায় যেকোনো ইউজার অ্যাডমিন প্যানেলে ঢুকলেও s.a ভেরিফিকেশন থাকবে)
   st.markdown("### 🔑 Super Admin (s.a) ID Control Center")
 
   users = st.session_state.get("users", {})
@@ -134,11 +152,10 @@ def render_sa_id_management_panel():
 
   st.write(f"📊 **মোট নিবন্ধিত আইডি সংখ্যা:** {len(users)}")
 
-  # ১. নির্দিষ্ট একটি আইডি বেছে নিয়ে ডিলিট করার অপশন
+  # ১. নির্দিষ্ট একটি আইডি বেছে নিয়ে ডিলিট করার অপশন
   st.markdown("#### 🗑️ নির্দিষ্ট আইডি ডিলিট করুন")
   user_list = list(users.keys())
 
-  # s.a নিজের আইডি যেন দুর্ঘটনাবশত ডিলিট না করে ফেলে তার সেফটি
   selected_user = st.selectbox(
       "যেই রেজিস্টার্ড আইডি ডিলিট করতে চান বেছে নিন:",
       user_list,
@@ -153,11 +170,12 @@ def render_sa_id_management_panel():
       else:
         if delete_single_user_by_sa(selected_user):
           st.success(
-              f"আইডি '{selected_user}' সফলভাবে ডিলিট করা হয়েছে এবং স্থায়ীভাবে সেভ হয়েছে!"
+              f"আইডি '{selected_user}' সফলভাবে ডিলিট করা হয়েছে এবং"
+              " স্থায়ীভাবে সেভ হয়েছে!"
           )
           st.rerun()
         else:
-          st.error("আইডি ডিলিট করতে সমস্যা হয়েছে।")
+          st.error("আইডি ডিলিট করতে সমস্যা হয়েছে।")
 
   # ২. সমস্ত পুরাতন আইডি এক ক্লিকে মুছে ফেলার সুবিধা
   st.markdown("---")
@@ -168,10 +186,10 @@ def render_sa_id_management_panel():
     if st.button("🚨 সকল পুরাতন আইডি ক্লিন করুন", key="clear_all_sa_btn"):
       clear_all_data_by_sa()
       st.success(
-          "সকল নিবন্ধিত আইডি মুছে ডাটাবেজ খালি করা হয়েছে! এখন থেকে নতুন আইডিগুলো স্থায়ীভাবে সেভ থাকবে।"
+          "সকল নিবন্ধিত আইডি মুছে ডাটাবেজ খালি করা হয়েছে! এখন থেকে নতুন"
+          " আইডিগুলো স্থায়ীভাবে সেভ থাকবে।"
       )
-      st.rerun()
-        
+      st.rerun()        
 # ==========================================
 # INITIALIZE SESSION & DATABASE
 # ==========================================
