@@ -287,25 +287,25 @@ st.markdown(
         font-weight: 900 !important;
         text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
     }}
-    /* বাটনের ব্যাকগ্রাউন্ড কালো, টেক্সট সাদা এবং আউটলাইন সাদা করার স্টাইল */
-    div.stButton > button {{
-        background-color: #000000 !important;
-        color: #FFFFFF !important;
-        border: 2px solid #FFFFFF !important;
+   /* বাটনের ব্যাকগ্রাউন্ড সাদা, টেক্সট কালো এবং আউটলাইন কালো করার স্টাইল */
+    div.stButton > button {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+        border: 2px solid #000000 !important;
         border-radius: 8px !important;
         font-weight: bold !important;
         transition: all 0.2s ease !important;
-    }}
-    div.stButton > button:hover {{
-        background-color: #333333 !important; 
-        color: #FFFFFF !important;
-        border-color: #FFFFFF !important;
-    }}
+    }
+    /* মাউস হোভার করলে বাটনের ব্যাকগ্রাউন্ড হালকা গ্রে হবে */
+    div.stButton > button:hover {
+        background-color: #E5E5E5 !important; 
+        color: #000000 !important;
+        border-color: #000000 !important;
+    }
     </style>
 """,
     unsafe_allow_html=True,
 )
-
 
 # ==========================================
 # 2. HELPER CALCULATORS & BUSINESS LOGIC
