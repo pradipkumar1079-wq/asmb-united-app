@@ -198,86 +198,42 @@ def render_sa_id_management_panel():
 
 
 # ==========================================
-# INITIALIZE SESSION & DATABASE
+# INITIALIZE SESSION & DATABASE (PURGE OLD DATA)
 # ==========================================
 def init_db():
   if "db_initialized" not in st.session_state:
-    saved_data = load_data_from_file()
+    # পুরনো সমস্ত সংরক্ষিত আইডি এবং ডাটা ফাইল থেকে সম্পূর্ণ মুছে নতুন করে শুরু করা হচ্ছে
+    if os.path.exists(DB_FILE):
+      try:
+        os.remove(DB_FILE)
+      except Exception:
+        pass
 
-    if saved_data:
-      st.session_state.app_settings = saved_data.get(
-          "app_settings",
-          {
-              "app_name": "ASMB United Football Club",
-              "bg_color": "#00D2FF",
-              "max_register_limit": 50,
-              "club_photo_b64": None,
-          },
-      )
+    st.session_state.app_settings = {
+        "app_name": "ASMB United Football Club",
+        "bg_color": "#00D2FF",
+        "max_register_limit": 50,
+        "club_photo_b64": None,
+    }
+    st.session_state.users = {}
+    st.session_state.ratings_db = {}
+    st.session_state.player_stats = {}
+    st.session_state.group_chat = []
+    st.session_state.football_ai_chats = []
+    st.session_state.personal_ai_chats = {}
+    st.session_state.notice_board = []
+    st.session_state.motm_votes = {}
+    st.session_state.injured_players = set()
+    st.session_state.match_settings = {
+        "asmb_player_count": 11,
+        "opponent_player_count": 11,
+        "opponent_formation": "4-4-2",
+        "goals_conceded": 0,
+    }
+    st.session_state.block_appeals = {}
+    st.session_state.match_availability_poll = {}
 
-      st.session_state.users = saved_data.get("users", {})
-
-      raw_ratings = saved_data.get("ratings_db", {})
-      st.session_state.ratings_db = {}
-      for key_str, val in raw_ratings.items():
-        parts = key_str.split("|||")
-        if len(parts) == 2:
-          st.session_state.ratings_db[(parts[0], parts[1])] = val
-
-      st.session_state.player_stats = saved_data.get("player_stats", {})
-      st.session_state.group_chat = saved_data.get("group_chat", [])
-      st.session_state.football_ai_chats = saved_data.get(
-          "football_ai_chats", []
-      )
-      st.session_state.personal_ai_chats = saved_data.get(
-          "personal_ai_chats", {}
-      )
-      st.session_state.notice_board = saved_data.get("notice_board", [])
-      st.session_state.motm_votes = saved_data.get("motm_votes", {})
-      st.session_state.injured_players = set(
-          saved_data.get("injured_players", [])
-      )
-      st.session_state.match_settings = saved_data.get(
-          "match_settings",
-          {
-              "asmb_player_count": 11,
-              "opponent_player_count": 11,
-              "opponent_formation": "4-4-2",
-              "goals_conceded": 0,
-          },
-      )
-      st.session_state.block_appeals = saved_data.get("block_appeals", {})
-      st.session_state.match_availability_poll = saved_data.get(
-          "match_availability_poll", {}
-      )
-
-    else:
-      st.session_state.app_settings = {
-          "app_name": "ASMB United Football Club",
-          "bg_color": "#00D2FF",
-          "max_register_limit": 50,
-          "club_photo_b64": None,
-      }
-      st.session_state.users = {}
-      st.session_state.ratings_db = {}
-      st.session_state.player_stats = {}
-      st.session_state.group_chat = []
-      st.session_state.football_ai_chats = []
-      st.session_state.personal_ai_chats = {}
-      st.session_state.notice_board = []
-      st.session_state.motm_votes = {}
-      st.session_state.injured_players = set()
-      st.session_state.match_settings = {
-          "asmb_player_count": 11,
-          "opponent_player_count": 11,
-          "opponent_formation": "4-4-2",
-          "goals_conceded": 0,
-      }
-      st.session_state.block_appeals = {}
-      st.session_state.match_availability_poll = {}
-
-      save_data_to_file()
-
+    save_data_to_file()
     st.session_state.db_initialized = True
 
   if "users" in st.session_state and isinstance(st.session_state.users, dict):
@@ -287,6 +243,7 @@ def init_db():
 
 
 init_db()
+
 
 # ==========================================
 # 1. DYNAMIC COLOR ENGINE & CSS INJECTION
@@ -304,16 +261,7 @@ def get_daily_theme_colors():
   day_idx = datetime.datetime.now().day % len(men_favorite_bg_colors)
   bg = men_favorite_bg_colors[day_idx]
 
-  title_text_colors = [
-      "#38BDF8",
-      "#60A5FA",
-      "#34D399",
-      "#FACC15",
-      "#C084FC",
-      "#94A3B8",
-      "#F87171",
-  ]
-  txt = title_text_colors[day_idx]
+  txt = "#000000"  # শিরোনাম সহ সকল সাধারণ টেক্সট কালার কালো নিশ্চিতকরণ
 
   return bg, txt
 
@@ -321,24 +269,25 @@ def get_daily_theme_colors():
 bg_color, title_text_color = get_daily_theme_colors()
 st.session_state.app_settings["bg_color"] = bg_color
 
-# আপনার চাওয়া অনুযায়ী বাটনের স্টাইল (কালো ব্যাকগ্রাউন্ড, সাদা আউটলাইন, সাদা টেক্সট)
+# CSS Injection: সমস্ত লেখা ও শিরোনাম কালো (#000000) করা হয়েছে
 st.markdown(
     f"""
     <style>
     .stApp {{
         background-color: {bg_color} !important;
     }}
-    .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp span, .stApp label {{
-        color: #FFFFFF !important;
+    /* সমস্ত টেক্সট, হেডার, লেবেল এবং স্প্যান কালো করা হলো */
+    .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6, .stApp span, .stApp label, .stApp div {{
+        color: #000000 !important;
         font-weight: 600;
     }}
     .daily-club-title {{
-        color: {title_text_color} !important;
+        color: #000000 !important;
         font-size: 2.3rem !important;
         font-weight: 900 !important;
-        text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
+        text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
     }}
-   /* বাটনের ব্যাকগ্রাউন্ড কালো, টেক্সট সাদা এবং আউটলাইন সাদা করার স্টাইল */
+    /* বাটনের ব্যাকগ্রাউন্ড কালো, টেক্সট সাদা এবং আউটলাইন সাদা করার স্টাইল */
     div.stButton > button {{
         background-color: #000000 !important;
         color: #FFFFFF !important;
@@ -347,7 +296,6 @@ st.markdown(
         font-weight: bold !important;
         transition: all 0.2s ease !important;
     }}
-    /* মাউস হোভার করলে বাটনের রঙ কিছুটা পরিবর্তন হবে */
     div.stButton > button:hover {{
         background-color: #333333 !important; 
         color: #FFFFFF !important;
@@ -600,7 +548,7 @@ def login_register_surface():
           "Personal AI Custom Name*", value="Jarvis", key="reg_pai"
       ).strip()
 
-      # প্রথম একাউন্ট খুললে সে স্বয়ংক্রিয়ভাবে Superadmin হবে
+      # ১ নম্বর রেজিস্টার্ড ইউজার স্বয়ংক্রিয়ভাবে Superadmin হবে
       is_first_user = len(st.session_state.users) == 0
       if is_first_user:
         st.info("ℹ️ First user automatically granted Superadmin (S.A) role.")
@@ -792,11 +740,10 @@ if (
 
       st.rerun()
 
-# 👑 সুপার অ্যাডমিন প্যানেল রেন্ডার করার জন্য শর্ত (যদি সে S.A বা Admin হয়)
+# 👑 সুপার অ্যাডমিন প্যানেল রেন্ডার করার জন্য শর্ত (যদি সে S.A বা Admin হয়)
 if curr_user.get("role") in ["Superadmin", "Admin"]:
   with st.sidebar.expander("👑 S.A & Admin Panel"):
-    render_sa_id_management_panel()
-      
+    render_sa_id_management_panel()      
         
 # ==========================================
 # 4. SIDEBAR & NAVIGATION
