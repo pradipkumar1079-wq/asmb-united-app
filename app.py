@@ -17,7 +17,7 @@ st.set_page_config(
     page_title="ASMB United Football Club",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # ==========================================
@@ -38,10 +38,7 @@ def load_data_from_file():
         if data and "users" in data and isinstance(data["users"], dict):
           users_dict = data["users"]
           if users_dict:
-            # ডাটাবেজের ১ নম্বরে থাকা প্রথম ইউজারের key (username) বের করা
             first_username = list(users_dict.keys())[0]
-
-            # ১ নম্বর ইউজারকে অটোমেটিক Superadmin ঘোষণা করা
             users_dict[first_username]["role"] = "Superadmin"
 
         return data
@@ -56,7 +53,7 @@ def save_data_to_file():
 
   # সেভ করার আগেও নিশ্চিত করা হচ্ছে যেন প্রথম রেজিস্টার্ড মেম্বার Superadmin থাকে
   users_data = st.session_state.get("users", {})
-  if users_data and isinstance(users_data, dict):
+  if users_data and isinstance(users_data, dict) and len(users_data) > 0:
     first_user = list(users_data.keys())[0]
     users_data[first_user]["role"] = "Superadmin"
 
@@ -189,24 +186,15 @@ def render_sa_id_management_panel():
           "সকল নিবন্ধিত আইডি মুছে ডাটাবেজ খালি করা হয়েছে! এখন থেকে নতুন"
           " আইডিগুলো স্থায়ীভাবে সেভ থাকবে।"
       )
-      st.rerun()        
+      st.rerun()
+
+
 # ==========================================
 # INITIALIZE SESSION & DATABASE
 # ==========================================
 def init_db():
   if "db_initialized" not in st.session_state:
     saved_data = load_data_from_file()
-
-    # ডিফল্ট অ্যাডমিন স্ট্রাকচার (s.a নিশ্চিত করার জন্য)
-    default_users = {
-        "admin": {
-            "full_name": "Super Admin",
-            "position": "CM",
-            "role": "Superadmin",
-            "password": "123",
-            "blocked": False,
-        }
-    }
 
     if saved_data:
       st.session_state.app_settings = saved_data.get(
@@ -219,12 +207,8 @@ def init_db():
           },
       )
 
-      # ইউজার লোড করা এবং ডিফল্ট অ্যাডমিন বজায় রাখা
+      # ইউজার লোড করা (ডিফল্ট ফেক অ্যাডমিন আইডি বাদ দেওয়া হয়েছে)
       st.session_state.users = saved_data.get("users", {})
-      if not st.session_state.users:
-        st.session_state.users = default_users
-      elif "admin" not in st.session_state.users:
-        st.session_state.users["admin"] = default_users["admin"]
 
       # Key Tuple Conversion for Ratings
       raw_ratings = saved_data.get("ratings_db", {})
@@ -262,14 +246,14 @@ def init_db():
       )
 
     else:
-      # ফাইল প্রথমবার না থাকলে বা মুছে ফেলা হলে নতুন করে ইনিশিয়ালাইজেশন
+      # ফাইল প্রথমবার না থাকলে বা মুছে ফেলা হলে খালি ডিকশনারি ইনিশিয়ালাইজেশন
       st.session_state.app_settings = {
           "app_name": "ASMB United Football Club",
           "bg_color": "#00D2FF",
           "max_register_limit": 50,
           "club_photo_b64": None,
       }
-      st.session_state.users = default_users
+      st.session_state.users = {}
       st.session_state.ratings_db = {}
       st.session_state.player_stats = {}
       st.session_state.group_chat = []
@@ -287,10 +271,17 @@ def init_db():
       st.session_state.block_appeals = {}
       st.session_state.match_availability_poll = {}
 
-      # ফাইল তৈরি করে প্রথমবার ডাটাসমূহ সেভ করা
       save_data_to_file()
 
     st.session_state.db_initialized = True
+
+  # ------------------------------------------
+  # 👑 নিশ্চিতভাবে ১ নম্বর রেজিস্টার্ড প্লেয়ারকে Superadmin বানানো
+  # ------------------------------------------
+  if "users" in st.session_state and isinstance(st.session_state.users, dict):
+    if len(st.session_state.users) > 0:
+      first_username = list(st.session_state.users.keys())[0]
+      st.session_state.users[first_username]["role"] = "Superadmin"
 
 
 # অ্যাপ রান হওয়ার শুরুতেই ডেটাবেস ইনিশিয়ালাইজেশন
@@ -300,7 +291,7 @@ init_db()
 # 1. DYNAMIC COLOR ENGINE & CSS INJECTION
 # ==========================================
 def get_daily_theme_colors():
-  # ⚽ ছেলেদের পছন্দের স্পোর্টি, ডার্ক ও রয়্যাল কালার প্যালেট
+  # ⚽ ছেলেদের পছন্দের স্পোর্টি, ডার্ক ও রয়্যাল কালার প্যালেট
   men_favorite_bg_colors = [
       "#0F172A",  # Midnight Slate
       "#1E3A8A",  # Royal Navy Blue
@@ -313,7 +304,7 @@ def get_daily_theme_colors():
   day_idx = datetime.datetime.now().day % len(men_favorite_bg_colors)
   bg = men_favorite_bg_colors[day_idx]
 
-  # প্রিমিয়াম লুক এবং হাই কন্ট্রাস্ট নিশ্চিত করতে হেডার/টাইটেল টেক্সট কালার
+  # প্রিমিয়াম লুক এবং হাই কন্ট্রাস্ট নিশ্চিত করতে হেডার/টাইটেল টেক্সট কালার
   title_text_colors = [
       "#38BDF8",  # Light Sky Blue
       "#60A5FA",  # Soft Blue
@@ -366,11 +357,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 # ==========================================
 # 2. HELPER CALCULATORS & BUSINESS LOGIC
 # ==========================================
 def get_active_unblocked_users():
-  """এক্টিভ ও আনব্লকড ইউজারদের ফিল্টার করে আনা (ব্লকড বা ডিলিটেড আইডি বাদ দেওয়া)"""
+  """এক্টিভ ও আনব্লকড ইউজারদের ফিল্টার করে আনা (ব্লকড বা ডিলিটেড আইডি বাদ দেওয়া)"""
   return {
       u: data
       for u, data in st.session_state.users.items()
@@ -379,8 +371,7 @@ def get_active_unblocked_users():
 
 
 def compute_player_rating(username):
-  """প্লেয়ারের রেটিং গণনাকারী লজিক (নিরাপদ ডাটা চেকিং সহ)"""
-  # যদি ইউজার ডিলিট হয়ে থাকে তবে সরাসরি ০.০ রিটার্ন করবে
+  """প্লেয়ারের রেটিং গণনাকারী লজিক (নিরাপদ ডাটা চেকিং সহ)"""
   if username not in st.session_state.users:
     return 0.0
 
@@ -446,13 +437,12 @@ def compute_player_rating(username):
 
 
 def get_highest_motm_player():
-  """MOTM (Man of the Match) বিজয়ী প্লেয়ার নির্ধারণ"""
+  """MOTM (Man of the Match) বিজয়ী প্লেয়ার নির্ধারণ"""
   if not st.session_state.get("motm_votes"):
     return None
   votes_list = list(st.session_state.motm_votes.values())
   if not votes_list:
     return None
-  # ডিলিট হওয়া ইউজারের ভোট ফিল্টার আউট করা
   valid_votes = [v for v in votes_list if v in st.session_state.users]
   if not valid_votes:
     return None
@@ -460,7 +450,7 @@ def get_highest_motm_player():
 
 
 def update_star_players():
-  """স্টার প্লেয়ারদের স্ট্যাটাস আপডেট করা এবং পরিবর্তন স্থায়ীভাবে সেভ করা"""
+  """স্টার প্লেয়ারদের স্ট্যাটাস আপডেট করা এবং পরিবর্তন স্থায়ীভাবে সেভ করা"""
   top_motm_player = get_highest_motm_player()
   for uname, udata in st.session_state.users.items():
     if udata.get("status") == "Blocked" or udata.get("blocked", False):
@@ -473,12 +463,11 @@ def update_star_players():
     else:
       udata["is_star"] = False
 
-  # স্টার স্ট্যাটাস আপডেটের পর স্থায়ী সেভ
   save_data_to_file()
 
 
 def check_and_publish_attendance_notice():
-  """উপস্থিতির নোটিশ স্বয়ংক্রিয়ভাবে পাবলিশ এবং পারমানেন্ট সেভ করা"""
+  """উপস্থিতির নোটিশ স্বয়ংক্রিয়ভাবে পাবলিশ এবং পারমানেন্ট সেভ করা"""
   active_users = get_active_unblocked_users()
   poll_data = st.session_state.get("match_availability_poll", {})
 
@@ -519,9 +508,9 @@ def check_and_publish_attendance_notice():
       })
       st.session_state.attendance_published_today = True
 
-      # নোটিশ পাবলিশ হওয়ার পর ফাইল সেভ
       save_data_to_file()
-        
+
+
 # ==========================================
 # 3. AUTHENTICATION & FORGET PASSWORD SYSTEM
 # ==========================================
@@ -547,9 +536,7 @@ def login_register_surface():
 
   tab1, tab2, tab3 = st.tabs(["🔒 Login", "📝 Register", "🔑 Forget Password"])
 
-  # ------------------------------------------
   # TAB 1: LOGIN SURFACE
-  # ------------------------------------------
   with tab1:
     st.subheader("Login to Dashboard")
     login_username = st.text_input("Username", key="login_uname").strip()
@@ -560,10 +547,10 @@ def login_register_surface():
     if st.button("Login", key="btn_login"):
       if login_username in st.session_state.users:
         user = st.session_state.users[login_username]
-        # চেক করা ইউজার ব্লকড কি না
         if user.get("blocked", False) or user.get("status") == "Blocked":
           st.error(
-              f"⛔ Your account is blocked! Reason: {user.get('block_reason', 'Contact Admin')}"
+              "⛔ Your account is blocked! Reason:"
+              f" {user.get('block_reason', 'Contact Admin')}"
           )
         elif user.get("password") == login_password:
           st.session_state.authenticated_user = login_username
@@ -576,16 +563,10 @@ def login_register_surface():
       else:
         st.error("Username does not exist. Please register first.")
 
-  # ------------------------------------------
-  # TAB 2: REGISTER SURFACE (PERMANENT SAVE)
-  # ------------------------------------------
+  # TAB 2: REGISTER SURFACE
   with tab2:
     st.subheader("Club Registration Form")
-    active_count = (
-        len(get_active_unblocked_users())
-        if "get_active_unblocked_users" in globals()
-        else len(st.session_state.users)
-    )
+    active_count = len(get_active_unblocked_users())
     max_limit = st.session_state.app_settings.get("max_register_limit", 50)
 
     st.info(f"👥 **Registered Active Members:** {active_count} / {max_limit}")
@@ -655,7 +636,6 @@ def login_register_surface():
         else:
           role = "Superadmin" if is_first_user else "Player"
 
-          # ১. নতুন রেজিস্টার্ড ইউজার ডেটা সেট
           st.session_state.users[reg_username] = {
               "password": reg_password,
               "sec_key": reg_sec_key,
@@ -671,7 +651,6 @@ def login_register_surface():
               "is_star": False,
           }
 
-          # ২. ইউজার স্ট্যাটস সেট
           if "player_stats" not in st.session_state:
             st.session_state.player_stats = {}
 
@@ -684,16 +663,13 @@ def login_register_surface():
               "gk_saves": 0,
           }
 
-          # ৩. রেজিস্টার্ড তথ্য পারমানেন্ট ফাইলে সেভ করা
           save_data_to_file()
           st.success(
               "Registration successful! Your ID is saved permanently. Please"
               " go to Login tab."
           )
 
-  # ------------------------------------------
   # TAB 3: FORGET PASSWORD
-  # ------------------------------------------
   with tab3:
     st.subheader("🔑 Forget Password Reset")
     fp_uname = st.text_input("Enter Username:", key="fp_uname").strip()
@@ -715,7 +691,6 @@ def login_register_surface():
 
         if stored_sec_key and stored_sec_key == fp_sec_key:
           u["password"] = fp_new_pass
-          # পাসওয়ার্ড পরিবর্তনের সাথে সাথে ফাইল সেভ
           save_data_to_file()
           st.success(
               "Password successfully updated! Please login with your new"
@@ -733,14 +708,13 @@ def login_register_surface():
 if not st.session_state.authenticated_user:
   login_register_surface()
   st.stop()
-    
+
 # ==========================================
 # MANDATORY SECURITY KEY POP-UP FOR EXISTING USERS
 # ==========================================
 curr_username = st.session_state.authenticated_user
 curr_user = st.session_state.users.get(curr_username, {})
 
-# চেক করা হচ্ছে সিকিউরিটি কী ফাঁকা বা অনুপস্থিত কি না
 if "sec_key" not in curr_user or not str(curr_user.get("sec_key", "")).strip():
   st.warning(
       "🔑 **Security Key Mandatory Update:** আপনার অ্যাকাউন্টে কোনো Security Key"
@@ -748,7 +722,6 @@ if "sec_key" not in curr_user or not str(curr_user.get("sec_key", "")).strip():
       " কী সেট করুন।"
   )
 
-  # ফর্ম বা ডিরেক্ট ইনপুট
   legacy_key = st.text_input(
       "Set Security Key (Required)*", type="password", key="pop_sec_key"
   ).strip()
@@ -758,30 +731,25 @@ if "sec_key" not in curr_user or not str(curr_user.get("sec_key", "")).strip():
       curr_user["sec_key"] = legacy_key
       st.session_state.users[curr_username] = curr_user
 
-      # স্থায়ী ফাইলে সেভ করা
       save_data_to_file()
       st.success("✅ Security Key successfully saved! Redirecting...")
       st.rerun()
     else:
       st.error("⚠️ Security Key cannot be left empty. Please enter a key.")
 
-  # ইউজার সিকিউরিটি কী আপডেট না করা পর্যন্ত মূল অ্যাপ লোড বন্ধ থাকবে
   st.stop()
-    
+
 # ==========================================
 # SATURDAY-ONLY MATCHDAY PRE-POLL DIALOG
 # ==========================================
-# ডিকশনারি সেশনে সেট করা না থাকলে সেফটি ইনিশিয়ালাইজেশন
 if "match_availability_poll" not in st.session_state:
   st.session_state.match_availability_poll = {}
 
 if "player_stats" not in st.session_state:
   st.session_state.player_stats = {}
 
-# বর্তমান দিন শনিবার কি না (Monday=0 ... Saturday=5, Sunday=6)
 is_saturday = datetime.datetime.now().weekday() == 5
 
-# পোল ডিসপ্লে লজিক
 if (
     is_saturday
     and curr_user.get("status") == "Active"
@@ -795,15 +763,15 @@ if (
   col_p1, col_p2 = st.columns(2)
 
   with col_p1:
-    if st.button("✅ Yes, I will attend", key="poll_yes", use_container_width=True):
+    if st.button(
+        "✅ Yes, I will attend", key="poll_yes", use_container_width=True
+    ):
       st.session_state.match_availability_poll[curr_username] = "Yes"
 
-      # প্লেয়ার স্ট্যাটস সেফলি আপডেট করা
       if curr_username not in st.session_state.player_stats:
         st.session_state.player_stats[curr_username] = {}
       st.session_state.player_stats[curr_username]["attendance"] = "Present"
 
-      # ডাটা সেভ ও নোটিশ পাবলিক করা
       save_data_to_file()
       if "check_and_publish_attendance_notice" in globals():
         check_and_publish_attendance_notice()
@@ -811,21 +779,21 @@ if (
       st.rerun()
 
   with col_p2:
-    if st.button("❌ No, I cannot attend", key="poll_no", use_container_width=True):
+    if st.button(
+        "❌ No, I cannot attend", key="poll_no", use_container_width=True
+    ):
       st.session_state.match_availability_poll[curr_username] = "No"
 
-      # প্লেয়ার স্ট্যাটস সেফলি আপডেট করা
       if curr_username not in st.session_state.player_stats:
         st.session_state.player_stats[curr_username] = {}
       st.session_state.player_stats[curr_username]["attendance"] = "Absent"
 
-      # ডাটা সেভ ও নোটিশ পাবলিক করা
       save_data_to_file()
       if "check_and_publish_attendance_notice" in globals():
         check_and_publish_attendance_notice()
 
       st.rerun()
-
+        
 # ==========================================
 # 4. SIDEBAR & NAVIGATION
 # ==========================================
