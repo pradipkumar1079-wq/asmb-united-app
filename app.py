@@ -1610,19 +1610,23 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
       else st.session_state.get("users", {})
   )
 
-  # নিজের নাম ছাড়া বাকি একটিভ প্লেয়ারদের তালিকা
-  targets = [u for u in active_users.keys() if u != active_curr_user]
+  # 🚫 কঠোর ফিল্টারিং: নিজের নাম সম্পূর্ণ বাদ দিয়ে সতীর্থদের তালিকা তৈরি
+  targets = [
+      u
+      for u in active_users.keys()
+      if str(u).strip().lower() != str(active_curr_user).strip().lower()
+  ]
 
   if not targets:
-    st.info("No other active teammates available to rate.")
+    st.warning("⚠️ আপনার নিজের অ্যাকাউন্ট ছাড়া রেটিং দেওয়ার মতো অন্য কোনো সক্রিয় সতীর্থ পাওয়া যায়নি।")
   else:
     # সেশন স্টেটে ratings_db নিশ্চিত করা
     if "ratings_db" not in st.session_state:
       st.session_state.ratings_db = {}
 
-    # প্লেয়ার সিলেকশন বক্স
+    # প্লেয়ার সিলেকশন বক্স (নিজের নাম এখানে থাকবে না)
     target = st.selectbox(
-        "Select Teammate:",
+        "Select Teammate to Rate:",
         options=targets,
         format_func=lambda x: (
             f"{active_users[x].get('full_name', x)} (`@{x}`)"
@@ -1648,17 +1652,21 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
       )
 
       if submit_btn:
-        st.session_state.ratings_db[(active_curr_user, target)] = {
-            "rating": round(new_r, 2),
-            "fouls": new_f,
-        }
+        # 🚫 ব্যাকএন্ড সিকিউরিটি চেক: নিজেকে রেটিং দেওয়ার সুযোগ প্রতিরোধ করা
+        if str(target).strip().lower() == str(active_curr_user).strip().lower():
+          st.error("❌ আপনি নিজেকে রেটিং দিতে পারবেন না! শুধুমাত্র সতীর্থদের রেটিং দিন।")
+        else:
+          st.session_state.ratings_db[(active_curr_user, target)] = {
+              "rating": round(new_r, 2),
+              "fouls": new_f,
+          }
 
-        if "save_data_to_file" in globals():
-          save_data_to_file()
+          if "save_data_to_file" in globals():
+            save_data_to_file()
 
-        target_name = active_users[target].get("full_name", target)
-        st.success(f"✅ Rating for {target_name} saved successfully!")
-        st.rerun()
+          target_name = active_users[target].get("full_name", target)
+          st.success(f"✅ Rating for {target_name} saved successfully!")
+          st.rerun()
           
 # ==========================================
 # 11. MANAGE PROFILE (EASY PIN & PASS CHANGE - SAFE & FIXED)
@@ -2042,7 +2050,8 @@ elif nav_choice == "🤖 Football AI (Public)":
       st.rerun()
     else:
       st.warning("⚠️ Please enter a question first.")
-        # ==========================================
+        
+# ==========================================
 # 14. PERSONAL AI & MOTM VOTING (LOCAL KNOWLEDGE ENGINE)
 # ==========================================
 elif nav_choice == "👤 Personal AI (Private)":
@@ -2251,7 +2260,7 @@ elif nav_choice == "👤 Personal AI (Private)":
 
   st.divider()
 
-  # -------------------------------------------------------------
+ # -------------------------------------------------------------
   # 🗳️ SUNDAY MOTM POLL
   # -------------------------------------------------------------
   st.subheader("🗳️ Sunday MOTM Poll")
@@ -2262,12 +2271,29 @@ elif nav_choice == "👤 Personal AI (Private)":
   else:
     active_users = st.session_state.get("users", {})
 
-  if not active_users:
-    st.info("No active users available for voting.")
+  # বর্তমান লগইন করা ইউজারের ইউজারনেম বের করা
+  active_curr_user = (
+      curr_user.get("username")
+      if "curr_user" in locals() and isinstance(curr_user, dict)
+      else st.session_state.get("authenticated_user", "")
+  )
+
+  # 🚫 কঠোর ফিল্টারিং: নিজের নাম সম্পূর্ণ বাদ দিয়ে প্রার্থী তালিকা তৈরি
+  motm_candidates = [
+      u
+      for u in active_users.keys()
+      if str(u).strip().lower() != str(active_curr_user).strip().lower()
+  ]
+
+  if not motm_candidates:
+    st.warning(
+        "⚠️ আপনার নিজের আইডি ছাড়া ভোট দেওয়ার মতো অন্য কোনো সক্রিয় সদস্য পাওয়া"
+        " যায়নি।"
+    )
   else:
     vote = st.selectbox(
         "Vote MOTM:",
-        options=list(active_users.keys()),
+        options=motm_candidates,
         format_func=lambda x: (
             f"{active_users[x].get('full_name', x)} (`@{x}`)"
         ),
@@ -2275,12 +2301,20 @@ elif nav_choice == "👤 Personal AI (Private)":
     )
 
     if st.button("Submit Vote", key="btn_motm"):
-      st.session_state.motm_votes[u_name] = vote
+      # 🚫 ব্যাকএন্ড সিকিউরিটি চেক: নিজেকে ভোট দেওয়ার চেষ্টা রোধ করা
+      if str(vote).strip().lower() == str(active_curr_user).strip().lower():
+        st.error(
+            "❌ আপনি নিজেকে MOTM ভোট দিতে পারবেন না! অন্য কোনো সতীর্থকে বেছে"
+            " নিন।"
+        )
+      else:
+        st.session_state.motm_votes[active_curr_user] = vote
 
-      if "save_data_to_file" in globals():
-        save_data_to_file()
+        if "save_data_to_file" in globals():
+          save_data_to_file()
 
-      st.success(f"✅ Vote cast successfully for @{vote}!")
+        st.success(f"✅ Vote cast successfully for @{vote}!")
+        st.rerun()
         
 # ==========================================
 # 15. ADMIN CONTROL PANEL (FIXED & ULTRA-SAFE)
