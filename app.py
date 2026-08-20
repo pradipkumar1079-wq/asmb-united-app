@@ -1,15 +1,15 @@
-import streamlit as st
+import base64
 import datetime
-import math
-import re
-import random
-import pandas as pd
-from PIL import Image
 import io
 import json
+import math
 import os
-import base64
-    
+import random
+import re
+import pandas as pd
+from PIL import Image
+import streamlit as st
+
 # ==========================================
 # 0. PAGE CONFIGURATION (MUST BE FIRST)
 # ==========================================
@@ -56,13 +56,17 @@ def save_data_to_file():
     first_user = list(users_data.keys())[0]
     users_data[first_user]["role"] = "Superadmin"
 
+  ratings_formatted = {}
+  for k, v in st.session_state.get("ratings_db", {}).items():
+    if isinstance(k, tuple):
+      ratings_formatted[f"{k[0]}|||{k[1]}"] = v
+    else:
+      ratings_formatted[str(k)] = v
+
   data_to_save = {
       "app_settings": st.session_state.get("app_settings", {}),
       "users": users_data,
-      "ratings_db": {
-          f"{k[0]}|||{k[1]}": v
-          for k, v in st.session_state.get("ratings_db", {}).items()
-      },
+      "ratings_db": ratings_formatted,
       "player_stats": st.session_state.get("player_stats", {}),
       "group_chat": st.session_state.get("group_chat", []),
       "football_ai_chats": st.session_state.get("football_ai_chats", []),
@@ -198,42 +202,87 @@ def render_sa_id_management_panel():
 
 
 # ==========================================
-# INITIALIZE SESSION & DATABASE (PURGE OLD DATA)
+# INITIALIZE SESSION & DATABASE (PERMANENT LOAD)
 # ==========================================
 def init_db():
   if "db_initialized" not in st.session_state:
-    # পুরনো সমস্ত সংরক্ষিত আইডি এবং ডাটা ফাইল থেকে সম্পূর্ণ মুছে নতুন করে শুরু করা হচ্ছে
-    if os.path.exists(DB_FILE):
-      try:
-        os.remove(DB_FILE)
-      except Exception:
-        pass
+    saved_data = load_data_from_file()
 
-    st.session_state.app_settings = {
-        "app_name": "ASMB United Football Club",
-        "bg_color": "#00D2FF",
-        "max_register_limit": 50,
-        "club_photo_b64": None,
-    }
-    st.session_state.users = {}
-    st.session_state.ratings_db = {}
-    st.session_state.player_stats = {}
-    st.session_state.group_chat = []
-    st.session_state.football_ai_chats = []
-    st.session_state.personal_ai_chats = {}
-    st.session_state.notice_board = []
-    st.session_state.motm_votes = {}
-    st.session_state.injured_players = set()
-    st.session_state.match_settings = {
-        "asmb_player_count": 11,
-        "opponent_player_count": 11,
-        "opponent_formation": "4-4-2",
-        "goals_conceded": 0,
-    }
-    st.session_state.block_appeals = {}
-    st.session_state.match_availability_poll = {}
+    if saved_data:
+      st.session_state.app_settings = saved_data.get(
+          "app_settings",
+          {
+              "app_name": "ASMB United Football Club",
+              "bg_color": "#00D2FF",
+              "max_register_limit": 50,
+              "club_photo_b64": None,
+          },
+      )
+      st.session_state.users = saved_data.get("users", {})
 
-    save_data_to_file()
+      # ratings_db কীগুলো সঠিক tuple ফরম্যাটে পুনঃস্থাপন
+      raw_ratings = saved_data.get("ratings_db", {})
+      formatted_ratings = {}
+      for k, v in raw_ratings.items():
+        if "|||" in k:
+          parts = k.split("|||")
+          formatted_ratings[(parts[0], parts[1])] = v
+        else:
+          formatted_ratings[k] = v
+      st.session_state.ratings_db = formatted_ratings
+
+      st.session_state.player_stats = saved_data.get("player_stats", {})
+      st.session_state.group_chat = saved_data.get("group_chat", [])
+      st.session_state.football_ai_chats = saved_data.get(
+          "football_ai_chats", []
+      )
+      st.session_state.personal_ai_chats = saved_data.get(
+          "personal_ai_chats", {}
+      )
+      st.session_state.notice_board = saved_data.get("notice_board", [])
+      st.session_state.motm_votes = saved_data.get("motm_votes", {})
+      st.session_state.injured_players = set(
+          saved_data.get("injured_players", [])
+      )
+      st.session_state.match_settings = saved_data.get(
+          "match_settings",
+          {
+              "asmb_player_count": 11,
+              "opponent_player_count": 11,
+              "opponent_formation": "4-4-2",
+              "goals_conceded": 0,
+          },
+      )
+      st.session_state.block_appeals = saved_data.get("block_appeals", {})
+      st.session_state.match_availability_poll = saved_data.get(
+          "match_availability_poll", {}
+      )
+    else:
+      st.session_state.app_settings = {
+          "app_name": "ASMB United Football Club",
+          "bg_color": "#00D2FF",
+          "max_register_limit": 50,
+          "club_photo_b64": None,
+      }
+      st.session_state.users = {}
+      st.session_state.ratings_db = {}
+      st.session_state.player_stats = {}
+      st.session_state.group_chat = []
+      st.session_state.football_ai_chats = []
+      st.session_state.personal_ai_chats = {}
+      st.session_state.notice_board = []
+      st.session_state.motm_votes = {}
+      st.session_state.injured_players = set()
+      st.session_state.match_settings = {
+          "asmb_player_count": 11,
+          "opponent_player_count": 11,
+          "opponent_formation": "4-4-2",
+          "goals_conceded": 0,
+      }
+      st.session_state.block_appeals = {}
+      st.session_state.match_availability_poll = {}
+      save_data_to_file()
+
     st.session_state.db_initialized = True
 
   if "users" in st.session_state and isinstance(st.session_state.users, dict):
@@ -261,7 +310,7 @@ def get_daily_theme_colors():
   day_idx = datetime.datetime.now().day % len(men_favorite_bg_colors)
   bg = men_favorite_bg_colors[day_idx]
 
-  txt = "#000000"  # শিরোনাম সহ সকল সাধারণ টেক্সট কালার কালো নিশ্চিতকরণ
+  txt = "#000000"
 
   return bg, txt
 
@@ -269,14 +318,12 @@ def get_daily_theme_colors():
 bg_color, title_text_color = get_daily_theme_colors()
 st.session_state.app_settings["bg_color"] = bg_color
 
-# CSS Injection: সমস্ত ব্র্যাকেট সঠিকভাবে এস্কেপ ({{ ... }}) করা হয়েছে
 st.markdown(
     f"""
     <style>
     .stApp {{
         background-color: {bg_color} !important;
     }}
-    /* সমস্ত টেক্সট, হেডার, লেবেল এবং স্প্যান কালো করা হলো */
     .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6, .stApp span, .stApp label, .stApp div {{
         color: #000000 !important;
         font-weight: 600;
@@ -287,7 +334,6 @@ st.markdown(
         font-weight: 900 !important;
         text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
     }}
-    /* বাটনের ব্যাকগ্রাউন্ড সাদা, টেক্সট কালো এবং আউটলাইন কালো করার স্টাইল (ডাবল ব্র্যাকেট সহ) */
     div.stButton > button {{
         background-color: #FFFFFF !important;
         color: #000000 !important;
@@ -296,7 +342,6 @@ st.markdown(
         font-weight: bold !important;
         transition: all 0.2s ease !important;
     }}
-    /* মাউস হোভার করলে বাটনের ব্যাকগ্রাউন্ড হালকা গ্রে হবে */
     div.stButton > button:hover {{
         background-color: #E5E5E5 !important; 
         color: #000000 !important;
@@ -306,6 +351,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 # ==========================================
 # 2. HELPER CALCULATORS & BUSINESS LOGIC
@@ -325,12 +371,12 @@ def compute_player_rating(username):
   user_ratings = [
       data["rating"]
       for (rater, target), data in st.session_state.ratings_db.items()
-      if target == username
+      if target == username and isinstance((rater, target), tuple)
   ]
   user_fouling = [
       data["fouls"]
       for (rater, target), data in st.session_state.ratings_db.items()
-      if target == username
+      if target == username and isinstance((rater, target), tuple)
   ]
 
   base_rating = (
@@ -548,7 +594,6 @@ def login_register_surface():
           "Personal AI Custom Name*", value="Jarvis", key="reg_pai"
       ).strip()
 
-      # ১ নম্বর রেজিস্টার্ড ইউজার স্বয়ংক্রিয়ভাবে Superadmin হবে
       is_first_user = len(st.session_state.users) == 0
       if is_first_user:
         st.info("ℹ️ First user automatically granted Superadmin (S.A) role.")
@@ -608,7 +653,6 @@ def login_register_surface():
               "gk_saves": 0,
           }
 
-          # পারমানেন্ট সেভ
           save_data_to_file()
           st.success(
               "Registration successful! Your ID is saved permanently. Please"
@@ -743,8 +787,8 @@ if (
 # 👑 সুপার অ্যাডমিন প্যানেল রেন্ডার করার জন্য শর্ত (যদি সে S.A বা Admin হয়)
 if curr_user.get("role") in ["Superadmin", "Admin"]:
   with st.sidebar.expander("👑 S.A & Admin Panel"):
-    render_sa_id_management_panel()      
-        
+    render_sa_id_management_panel()
+      
 # ==========================================
 # 4. SIDEBAR & NAVIGATION
 # ==========================================
@@ -804,44 +848,60 @@ else:
 # ==========================================
 # 5. BLOCKED USER SURFACE
 # ==========================================
-# ডিকশনারি সেফটি ইনিশিয়ালাইজেশন
+# ডিকশনারি ও সেফটি ইনিশিয়ালাইজেশন
 if "block_appeals" not in st.session_state:
-    st.session_state.block_appeals = {}
+  st.session_state.block_appeals = {}
 
-# ইউজার স্ট্যাটাস ব্লকড কি না চেক
-if curr_user.get("status") == "Blocked":
-    st.error("🚨 Your account is BLOCKED by management.")
-    
-    # ব্লক করার কারণ প্রদর্শন
-    block_reason = curr_user.get('block_reason', 'Policy Violation / Management Decision')
-    st.info(f"**Reason for Block:** {block_reason}")
-    
-    st.divider()
-    st.subheader("📩 Submit Appeal to Superadmin")
-    
-    # ইতিমধ্যে অ্যাপিল জমা দেওয়া হয়েছে কি না চেক
-    if curr_username in st.session_state.block_appeals:
-        submitted_appeal = st.session_state.block_appeals[curr_username]
-        st.warning("⏳ **Appeal Status:** Under Review by Superadmin/Management.")
-        st.markdown(f"**Your Submitted Appeal:**\n> *\"{submitted_appeal}\"*")
-        st.caption("Please wait until an administrator reviews your request.")
-    else:
-        st.write("If you believe this decision was made in error, you can submit a appeal statement below.")
-        appeal_text = st.text_area("Write your explanation/appeal to Superadmin:", key="text_appeal_reason")
-        
-        if st.button("Submit Final Appeal", key="btn_appeal", use_container_width=True):
-            if appeal_text.strip():
-                # সেশনে এবং ফাইলে অ্যাপিল সেভ
-                st.session_state.block_appeals[curr_username] = appeal_text.strip()
-                save_data_to_file()
-                
-                st.success("✅ Your appeal has been submitted successfully!")
-                st.rerun()
-            else:
-                st.error("⚠️ Appeal text cannot be empty. Please write a valid reason before submitting.")
-                
-    # ব্লকড ইউজারের জন্য পরবর্তী অংশ লোড হওয়া বন্ধ রাখা
-    st.stop()
+curr_user = st.session_state.users.get(curr_username, {})
+
+# ইউজার স্ট্যাটাস ব্লকড কি না চেক (উভয় ফ্ল্যাগ নিরাপদে চেক করা হচ্ছে)
+if curr_user.get("status") == "Blocked" or curr_user.get("blocked", False):
+  st.error("🚨 Your account is BLOCKED by management.")
+
+  # ব্লক করার কারণ প্রদর্শন
+  block_reason = curr_user.get(
+      "block_reason", "Policy Violation / Management Decision"
+  )
+  st.info(f"**Reason for Block:** {block_reason}")
+
+  st.divider()
+  st.subheader("📩 Submit Appeal to Superadmin")
+
+  # ইতিমধ্যে অ্যাপিল জমা দেওয়া হয়েছে কি না চেক
+  if curr_username in st.session_state.block_appeals:
+    submitted_appeal = st.session_state.block_appeals[curr_username]
+    st.warning("⏳ **Appeal Status:** Under Review by Superadmin/Management.")
+    st.markdown(f"**Your Submitted Appeal:**\n> *\"{submitted_appeal}\"*")
+    st.caption("Please wait until an administrator reviews your request.")
+  else:
+    st.write(
+        "If you believe this decision was made in error, you can submit an"
+        " appeal statement below."
+    )
+    appeal_text = st.text_area(
+        "Write your explanation/appeal to Superadmin:", key="text_appeal_reason"
+    )
+
+    if st.button(
+        "Submit Final Appeal", key="btn_appeal", use_container_width=True
+    ):
+      if appeal_text.strip():
+        # সেশন এবং লোকাল JSON ফাইলে স্থায়ী সংরক্ষণের ব্যবস্থা
+        st.session_state.block_appeals[curr_username] = appeal_text.strip()
+
+        if "save_data_to_file" in globals():
+          save_data_to_file()
+
+        st.success("✅ Your appeal has been submitted successfully!")
+        st.rerun()
+      else:
+        st.error(
+            "⚠️ Appeal text cannot be empty. Please write a valid reason before"
+            " submitting."
+        )
+
+  # ব্লকড ইউজারের জন্য ড্যাশবোর্ডের পরবর্তী কোনো সেকশন বা কোড এক্সিকিউট হওয়া বন্ধ রাখা
+  st.stop()
 
 # ==========================================
 # 6. NOTICE BOARD & COMMENTS (WITH POLL & SQUAD DISPLAY)
@@ -869,7 +929,7 @@ if nav_choice == "📌 Notice Board & News":
         st.markdown(notice.get("content", ""))
 
         # ------------------------------------------
-        # ⚽ Published Squad Display (With Name, Rating & Profile Picture)
+        # ⚽ Published Squad Display
         # ------------------------------------------
         squad_players = notice.get("squad_players", [])
         if squad_players and isinstance(squad_players, list):
@@ -889,7 +949,7 @@ if nav_choice == "📌 Notice Board & News":
             else:
               p_rating = player_info.get("rating", 6.0)
 
-            # 🖼️ প্রোফাইল পিকচার হ্যান্ডলিং (Base64 -> URL -> Default Fallback)
+            # 🖼️ প্রোফাইল পিকচার হ্যান্ডলিং
             photo_b64 = player_info.get("photo_b64")
             p_img = None
 
@@ -903,7 +963,7 @@ if nav_choice == "📌 Notice Board & News":
               p_img = (
                   player_info.get("profile_pic_url")
                   or player_info.get("image")
-                  or "https://cdn-icons-png.flaticon.com/512/166/166344.png"  # ডিফল্ট ফুটবল প্লাগ-ইন আইকন
+                  or "https://cdn-icons-png.flaticon.com/512/166/166344.png"
               )
 
             with cols[p_idx % 2]:
@@ -925,7 +985,6 @@ if nav_choice == "📌 Notice Board & News":
           st.markdown("---")
           st.markdown("#### 🗳️ Cast Your Vote")
 
-          # সেফলি পোল ভোট ডিকশনারি সেটআপ {username: selected_option}
           if "poll_votes" not in notice or not isinstance(
               notice["poll_votes"], dict
           ):
@@ -933,7 +992,6 @@ if nav_choice == "📌 Notice Board & News":
 
           votes = notice["poll_votes"]
 
-          # বর্তমান ইউজারের পূর্বের ভোট চেক করা
           auth_user = st.session_state.get(
               "authenticated_user",
               curr_username if "curr_username" in locals() else "",
@@ -956,7 +1014,8 @@ if nav_choice == "📌 Notice Board & News":
               "Submit Vote", key=f"btn_vote_{notice_id}_{idx}", type="primary"
           ):
             votes[auth_user] = selected_option
-            save_data_to_file()
+            if "save_data_to_file" in globals():
+              save_data_to_file()
             st.success(f"✅ Vote for '{selected_option}' submitted!")
             st.rerun()
 
@@ -975,6 +1034,9 @@ if nav_choice == "📌 Notice Board & News":
         # ------------------------------------------
         # 🗑️ Superadmin / Admin Delete Section
         # ------------------------------------------
+        curr_user = st.session_state.get("users", {}).get(
+            st.session_state.get("authenticated_user"), {}
+        )
         if curr_user.get("role") in ["Superadmin", "Admin"]:
           st.markdown("---")
           if st.button(
@@ -987,7 +1049,8 @@ if nav_choice == "📌 Notice Board & News":
                 for n in st.session_state.notice_board
                 if n.get("id") != notice_id
             ]
-            save_data_to_file()
+            if "save_data_to_file" in globals():
+              save_data_to_file()
             st.success("Notice deleted successfully!")
             st.rerun()
 
@@ -1018,19 +1081,18 @@ if nav_choice == "📌 Notice Board & News":
                 "user": curr_user.get("full_name", curr_username),
                 "text": comment_input.strip(),
             })
-            save_data_to_file()
+            if "save_data_to_file" in globals():
+              save_data_to_file()
             st.rerun()
-            
+
 # ==========================================
 # 7. PLAYER DIRECTORY & SPECIAL ROSTERS (WITH SERIAL NUMBERS)
 # ==========================================
 elif nav_choice == "👥 Player Directory & Roster":
   st.header("👥 Player Directory & Roster")
 
-  # Injured tab বাদ দিয়ে ২টি ট্যাব তৈরি
   tab1, tab2 = st.tabs(["📋 Public Directory", "⭐ Star Players List"])
 
-  # একটিভ প্লেয়ারদের তালিকা ফেচ করা
   active_users = (
       get_active_unblocked_users()
       if "get_active_unblocked_users" in globals()
@@ -1042,7 +1104,6 @@ elif nav_choice == "👥 Player Directory & Roster":
   # ------------------------------------------
   with tab1:
     dir_data = []
-    # Serial number সহ তালিকা তৈরি
     for idx, (u, d) in enumerate(active_users.items(), 1):
       dir_data.append({
           "#": idx,
@@ -1055,10 +1116,7 @@ elif nav_choice == "👥 Player Directory & Roster":
       })
 
     if dir_data:
-      import pandas as pd
-
       df = pd.DataFrame(dir_data)
-      # Table-এর ডিফল্ট 0 ইনডেক্স লুকিয়ে # কলামটিকে সূচক হিসেবে ব্যবহার করা
       st.dataframe(df.set_index("#"), use_container_width=True)
     else:
       st.info("No active players found.")
@@ -1071,7 +1129,6 @@ elif nav_choice == "👥 Player Directory & Roster":
     count = 1
 
     for sp, u in active_users.items():
-      # রেটিং নিরাপদে গণনা করা
       if "compute_player_rating" in globals():
         try:
           r = float(compute_player_rating(sp))
@@ -1080,7 +1137,6 @@ elif nav_choice == "👥 Player Directory & Roster":
       else:
         r = float(u.get("rating", 0.0))
 
-      # 🌟 শর্ত: রেটিং ৮.০০ বা তার বেশি হলে স্টার প্লেয়ার হিসেবে গণ্য হবে
       if r >= 8.00:
         star_found = True
         full_name = u.get("full_name", sp)
@@ -1107,7 +1163,7 @@ elif nav_choice == "🖼️ Member Photo Gallery":
       else st.session_state.get("users", {})
   )
 
-  # যাদের প্রোফাইল ছবি (photo_b64) রয়েছে তাদের ফিল্টার করা
+  # যাদের প্রোফাইল ছবি (photo_b64) রয়েছে তাদের ফিল্টার করা
   photo_users = [
       u for u, data in active_users.items() if data.get("photo_b64")
   ]
@@ -1131,17 +1187,18 @@ elif nav_choice == "🖼️ Member Photo Gallery":
           # ছবি প্রদর্শনী
           st.image(image, use_container_width=True)
           st.caption(f"👤 **{full_name}** (`@{u}`)")
-        except Exception as e:
-          # কোনো কারণে ছবি লোড না হতে পারলে এরর হ্যান্ডলিং
+        except Exception:
           st.error(f"Could not load photo for @{u}")
-            
+
 # ==========================================
 # 9. SQUAD GENERATION & TACTICS (WITH RATINGS IN PUBLISHED NOTICE)
 # ==========================================
 elif nav_choice == "⚽ Squad Generation & Tactics":
   st.header("⚽ Tactical Squad Generator")
 
-  user_role = curr_user.get("role", "Player") if "curr_user" in locals() else "Player"
+  user_role = (
+      curr_user.get("role", "Player") if "curr_user" in locals() else "Player"
+  )
 
   if user_role not in ["Superadmin", "Admin"]:
     st.warning("🔒 Only Superadmin/Admin can generate squads.")
@@ -1162,10 +1219,10 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
   def safe_compute_rating(u_id):
     if "compute_player_rating" in globals():
       try:
-        return compute_player_rating(u_id)
+        return float(compute_player_rating(u_id))
       except Exception:
         return 0.0
-    return 0.0
+    return float(active_users.get(u_id, {}).get("rating", 0.0))
 
   # ---------------------------------------------------------
   # MODE 1: SATURDAY MATCH SQUAD
@@ -1215,7 +1272,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
           and player_stats.get(u, {}).get("attendance") != "Absent"
       ]
 
-      # 1. Separate Goalkeepers (GK) & Field Players strictly
+      # ১. গোলকিপার (GK) এবং ফিল্ড প্লেয়ার আলাদা করা
       gk_candidates = [
           u for u in available if active_users[u].get("position") == "GK"
       ]
@@ -1225,36 +1282,39 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
 
       gk_player = None
       if gk_candidates:
+        # সর্বোচ্চ রেটিংয়ের প্লেয়ারকে মূল GK বানানো
         gk_candidates_sorted = sorted(
             gk_candidates, key=lambda x: safe_compute_rating(x), reverse=True
         )
         gk_player = gk_candidates_sorted[0]
       elif available:
-        # Fallback: আসল GK না থাকলে কম রেটিংয়ের প্লেয়ারকে GK করা হবে
+        # আসল GK না থাকলে সব প্লেয়ারের মধ্যে সর্বোচ্চ রেটিংধারী GK পজিশনে বসবে
         sorted_all = sorted(
-            available, key=lambda x: safe_compute_rating(x)
+            available, key=lambda x: safe_compute_rating(x), reverse=True
         )
         gk_player = sorted_all[0]
         field_candidates = [u for u in available if u != gk_player]
 
-      gk_rating = safe_compute_rating(gk_player) if gk_player else "N/A"
+      gk_rating = safe_compute_rating(gk_player) if gk_player else 0.0
       gk_full_name = active_users.get(gk_player, {}).get(
           "full_name", gk_player
       )
       gk_name = (
-          f"{gk_full_name} (`@{gk_player}`) [Rating: {gk_rating}]"
+          f"{gk_full_name} (`@{gk_player}`) [Rating: {gk_rating:.2f}]"
           if gk_player
           else "No GK Assigned"
       )
 
-      # 2. Select top field players by rating
+      # ২. ফিল্ড প্লেয়ারদের রেটিং অনুযায়ী সাজানো (সবচেয়ে বেশি রেটিং উপরে)
       field_sorted = sorted(
           field_candidates, key=lambda x: safe_compute_rating(x), reverse=True
       )
-      starters_field = field_sorted[:target_count]
-      subs = field_sorted[target_count:]
 
-      # 3. DYNAMIC POSITION ASSIGNMENT
+      # 🌟 লজিক আপডেট: টপ প্লেয়াররা স্টার্টিং একাদশে থাকবে, কম রেটিংয়ের প্লেয়াররা সাবস্টিটিউট/বেঞ্চে যাবে
+      starters_field = field_sorted[:target_count]
+      subs = field_sorted[target_count:]  # Lowest-rated players go here
+
+      # ৩. পজিশন অনুযায়ী ফিল্টার ও ক্যাটাগরি করা
       def categorize_pos(pos):
         pos = str(pos).upper()
         if any(d in pos for d in ["CB", "LB", "RB", "DEF"]):
@@ -1263,7 +1323,6 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
           return "ATT"
         return "MID"
 
-      # Group players into categories
       squad_by_cat = {"DEF": [], "MID": [], "ATT": []}
       for p_uname in starters_field:
         p_data = active_users.get(p_uname, {})
@@ -1284,7 +1343,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
           )
       )
 
-      # Display Lineup
+      # লাইনআপ শো করা
       st.markdown("### 🏆 Starting Lineup & Tactical Setup")
       st.info(
           f"🎯 **Tactical Formation:** `{chosen_formation}` | **Field"
@@ -1292,7 +1351,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
       )
       st.success(f"🧤 **Main Goalkeeper (GK):** {gk_name}")
 
-      # Dynamic Visual Layout
+      # ভিজ্যুয়াল পিচ ভিউ
       st.markdown("#### 🏟️ Pitch Position Setup:")
       pitch_code = f"[ 🧤 GK: {gk_name} ]\n"
       pitch_code += "=" * 65 + "\n"
@@ -1306,29 +1365,31 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
         if players_in_zone:
           line = f"| {label} ({len(players_in_zone)}): "
           line += " | ".join([
-              f"{p[1]} [{p[2]}] (Rating: {p[3]})" for p in players_in_zone
+              f"{p[1]} [{p[2]}] (Rating: {p[3]:.2f})" for p in players_in_zone
           ])
           pitch_code += line + "\n"
           pitch_code += "-" * 65 + "\n"
 
       st.code(pitch_code, language="text")
 
-      # Notice Text Generation (With Ratings)
-      notice_text = f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n"
+      # নোটিশ তৈরি
+      notice_text = (
+          f"### ⚽ Match Squad Announcement ({datetime.date.today()})\n"
+      )
       notice_text += f"**Formation:** {chosen_formation}\n"
       notice_text += f"**🧤 GK:** {gk_name}\n\n"
       notice_text += f"**🏟️ Starting Field Lineup ({len(starters_field)} Players):**\n"
 
       for zone in ["DEF", "MID", "ATT"]:
         for p in squad_by_cat[zone]:
-          line = f"* **[{p[2]}]**: {p[1]} - Rating: **{p[3]}**"
+          line = f"* **[{p[2]}]**: {p[1]} - Rating: **{p[3]:.2f}**"
           st.markdown(line)
           notice_text += f"{line}\n"
 
-      # 4. Substitution Schedule (With Ratings)
+      # ৪. সাবস্টিটিউট শিডিউল (কম রেটিংয়ের প্লেয়ারদের মাঠে নামানো হবে স্টার্টিং প্লেয়ারদের বদলে)
       st.markdown("---")
       st.markdown("### 🔄 Substitution Schedule (10:15 AM - 11:00 AM)")
-      notice_text += "\n**🔄 Substitution Schedule:**\n"
+      notice_text += "\n**🔄 Substitution Schedule (Low Rated / Subs):**\n"
 
       if subs:
         start_time = datetime.datetime.strptime("10:15", "%H:%M")
@@ -1354,8 +1415,8 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
           sub_msg = (
               f"⏰ **সময় {time_str}:** "
               f"মাঠে নামবেন ➡️ **{sub_fname}** (`@{sub_p}` | Rating:"
-              f" **{sub_rating}**) | মাঠ ছাড়বেন ⬅️ **{replaced_fname}**"
-              f" (`@{replaced_p}` | Rating: **{replaced_rating}**)"
+              f" **{sub_rating:.2f}**) | মাঠ ছাড়বেন ⬅️ **{replaced_fname}**"
+              f" (`@{replaced_p}` | Rating: **{replaced_rating:.2f}**)"
           )
           st.warning(sub_msg)
           notice_text += f"* {sub_msg}\n"
@@ -1441,6 +1502,7 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
           team_tp = []
           team_el = []
 
+          # স্নেক ড্রাফট প্যাটার্নে টিম ব্যালেন্স
           for idx, p in enumerate(sorted_players):
             if (idx // 2) % 2 == 0:
               if idx % 2 == 0:
@@ -1475,28 +1537,27 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
               "formation": practice_formation,
           }
 
-          # Notice Text Generation (With Player Ratings)
           notice_text = (
               f"### 🏃 Practice Match Teams - {datetime.date.today()}\n"
           )
           notice_text += f"**Formation:** {practice_formation}\n\n"
           notice_text += (
               f"**🐯 🐅 Tigers & Panthers ({len(team_tp)} Players | Avg Rating:"
-              f" {avg_tp}):**\n"
+              f" {avg_tp:.2f}):**\n"
           )
           for idx, p in enumerate(team_tp, 1):
             u = active_users.get(p, {})
             r = safe_compute_rating(p)
-            notice_text += f"{idx}. {u.get('full_name', p)} (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**\n"
+            notice_text += f"{idx}. {u.get('full_name', p)} (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r:.2f}**\n"
 
           notice_text += (
               f"\n**🦅 🦁 Eagles & Lions ({len(team_el)} Players | Avg Rating:"
-              f" {avg_el}):**\n"
+              f" {avg_el:.2f}):**\n"
           )
           for idx, p in enumerate(team_el, 1):
             u = active_users.get(p, {})
             r = safe_compute_rating(p)
-            notice_text += f"{idx}. {u.get('full_name', p)} (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r}**\n"
+            notice_text += f"{idx}. {u.get('full_name', p)} (`@{p}`) - Pos: `{u.get('position', 'N/A')}` | Rating: **{r:.2f}**\n"
 
           if "notice_board" not in st.session_state:
             st.session_state.notice_board = []
@@ -1527,26 +1588,26 @@ elif nav_choice == "⚽ Squad Generation & Tactics":
           st.markdown(
               f"### 🐯 🐅 Tigers & Panthers ({len(p_data['team_tp'])} Players)"
           )
-          st.caption(f"Average Team Rating: **{p_data['avg_tp']}**")
+          st.caption(f"Average Team Rating: **{p_data['avg_tp']:.2f}**")
           for idx, p in enumerate(p_data["team_tp"], 1):
             u = active_users.get(p, {})
             r = safe_compute_rating(p)
             st.markdown(
                 f"{idx}. **{u.get('full_name', p)}** (`@{p}`) - Pos:"
-                f" `{u.get('position', 'N/A')}` | Rating: **{r}**"
+                f" `{u.get('position', 'N/A')}` | Rating: **{r:.2f}**"
             )
 
         with col_t2:
           st.markdown(
               f"### 🦅 🦁 Eagles & Lions ({len(p_data['team_el'])} Players)"
           )
-          st.caption(f"Average Team Rating: **{p_data['avg_el']}**")
+          st.caption(f"Average Team Rating: **{p_data['avg_el']:.2f}**")
           for idx, p in enumerate(p_data["team_el"], 1):
             u = active_users.get(p, {})
             r = safe_compute_rating(p)
             st.markdown(
                 f"{idx}. **{u.get('full_name', p)}** (`@{p}`) - Pos:"
-                f" `{u.get('position', 'N/A')}` | Rating: **{r}**"
+                f" `{u.get('position', 'N/A')}` | Rating: **{r:.2f}**"
             )
                         
 # ==========================================
@@ -1586,7 +1647,7 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
         * **০:** একটি ফাউলও করেনি, একদম পরিচ্ছন্ন ও ফেয়ার প্লে বজায় রেখেছে।
         * **১-২:** হালকা ফাউল বা বল দখলের চেষ্টা।
         * **৩-৫:** বারবার ফাউল বা হলুদ কার্ড খাওয়া।
-        * **৮-১০:** লাল কার্ড, সরাসরি পেনাল্টি দেওয়া বা ক্ষতিকর ফাউল।
+        * **৮-১০:** লাল কার্ড, সরাসরি পেনাল্টি দেওয়া বা ক্ষতিকর ফাউল।
         """)
 
   st.markdown("---")
@@ -1647,20 +1708,20 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
       if submit_btn:
         selected_target_clean = str(target).strip().lower()
 
-        # 🚫 ব্যাকএন্ড সিকিউরিটি চেক: নিজেকে রেটিং দেওয়ার চেষ্টা পুরোপুরি ব্লক
+        # 🚫 ব্যাকএন্ড সিকিউরিটি চেক: নিজেকে রেটিং দেওয়ার চেষ্টা পুরোপুরি ব্লক
         if selected_target_clean == clean_curr_user:
           st.error(
               "❌ আপনি নিজেকে রেটিং দিতে পারবেন না! শুধুমাত্র সতীর্থদের রেটিং দিন।"
           )
         else:
-          # ১. ইউজারের দেওয়া রেটিং ও ফাউল সেভ
+          # ১. ইউজারের দেওয়া রেটিং ও ফাউল সেভ
           st.session_state.ratings_db[(active_curr_user, target)] = {
               "rating": round(new_r, 2),
               "fouls": new_f,
           }
 
           # ---------------------------------------------------------
-          # 🧮 অ্যাডমিন প্যানেল + সতীর্থের রেটিং মিলিয়ে ১০-এ ফাইনাল রেটিং গণনা
+          # 🧮 অ্যাডমিন প্যানেল + সতীর্থের রেটিং মিলিয়ে ১০-এ ফাইনাল রেটিং গণনা
           # ---------------------------------------------------------
           pstats = st.session_state.get("player_stats", {}).get(target, {})
 
@@ -1669,7 +1730,7 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
           gk_saves = pstats.get("gk_saves", 0)
           conceded_pen = pstats.get("conceded_penalty", 0.0)
 
-          # সতীর্থদের গড় রেটিং ও ফাউল হিসাব
+          # সতীর্থদের গড় রেটিং ও ফাউল হিসাব
           all_ratings_for_target = [
               v["rating"]
               for k, v in st.session_state.ratings_db.items()
@@ -1698,7 +1759,7 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
           )  # গোল, অ্যাসিস্ট ও সেভ বোনাস
           penalty_points = (avg_fouls * 0.2) + (
               conceded_pen * 0.5
-          )  # ফাউল ও পেনাল্টির জন্য পয়েন্ট কাটা
+          )  # ফাউল ও পেনাল্টির জন্য পয়েন্ট কাটা
 
           # ১০ এর মধ্যে ক্যাপ করা ফাইনাল ক্যালকুলেশন
           calc_rating = avg_teammate_rating + bonus_points - penalty_points
@@ -1717,7 +1778,7 @@ elif nav_choice == "⭐ Teammate Ratings & Guide":
               f" ⭐ **{final_10_rating}/10.0**"
           )
           st.rerun()
-          
+
 # ==========================================
 # 11. MANAGE PROFILE (EASY PIN & PASS CHANGE - SAFE & FIXED)
 # ==========================================
@@ -1873,7 +1934,7 @@ elif nav_choice == "💬 Club House Group Chat":
       st.rerun()
     else:
       st.warning("⚠️ Please type a message before sending.")
-        
+
 # ==========================================
 # 13. FOOTBALL AI (PUBLIC) - LOCAL KNOWLEDGE BASE
 # ==========================================
@@ -1981,19 +2042,19 @@ elif nav_choice == "🤖 Football AI (Public)":
           resp = (
               "**4-2-3-1 Formation Analysis:** আধুনিক ফুটবলের অন্যতম সুসংগঠিত"
               " স্ট্রাকচার। দুজন 'Double Pivot' ডিফেন্সিভ মিডফিল্ডার ব্যাকলাইনকে"
-              " সুরক্ষা দেয় এবং নম্বর ১০ (CAM) প্লেয়ার আক্রমণের নিয়ন্ত্রণ নেয়।"
+              " সুরক্ষা দেয় এবং নম্বর ১০ (CAM) প্লেয়ার আক্রমণের নিয়ন্ত্রণ নেয়।"
           )
         elif any(f in text_lower for f in ["3-5-2", "352", "5-3-2"]):
           resp = (
               "**3-5-2 / Wing-back Dynamics:** মিডফিল্ডের আধিপত্য এবং ওভারল্যাপিং"
-              " উইং-ব্যাক দিয়ে প্রতিপক্ষের ওপর চাপ সৃষ্টি করে। ব্যাকলাইনে ৩ জন"
-              " সেন্টার ব্যাক থাকায় সেন্ট্রাল ডিফেন্স খুব শক্ত থাকে।"
+              " উইং-ব্যাক দিয়ে প্রতিপক্ষের ওপর চাপ সৃষ্টি করে। ব্যাকলাইনে ৩ জন"
+              " সেন্টার ব্যাক থাকায় সেন্ট্রাল ডিফেন্স খুব শক্ত থাকে।"
           )
         elif any(f in text_lower for f in ["4-4-2", "442"]):
           resp = (
               "**Classic 4-4-2:** এটি ট্র্যাডিশনাল ডিফেন্সিভ ব্লকিং এবং কাউন্টার"
-              " অ্যাটাকের জন্য দারুণ। দুটি স্ট্রাইকার থাকার কারণে ডায়রেক্ট ফুটবল"
-              " খেলতে সুবিধা হয়।"
+              " অ্যাটাকের জন্য দারুণ। দুটি স্ট্রাইকার থাকার কারণে ডায়রেক্ট ফুটবল"
+              " খেলতে সুবিধা হয়।"
           )
 
         # ২. ট্যাকটিক্যাল স্টাইল
@@ -2003,8 +2064,8 @@ elif nav_choice == "🤖 Football AI (Public)":
         ):
           resp = (
               "**Tiki-Taka Tactics:** সংক্ষিপ্ত পাস, দ্রুত পজিশন পরিবর্তন এবং"
-              " বল পজেশন ধরে রাখার কৌশল। এর মূল লক্ষ্য হলো পাসিংয়ের মাধ্যমে"
-              " প্রতিপক্ষের ডিফেন্সে ফাঁকা জায়গা (Space) তৈরি করা।"
+              " বল পজেশন ধরে রাখার কৌশল। এর মূল লক্ষ্য হলো পাসিংয়ের মাধ্যমে"
+              " প্রতিপক্ষের ডিফেন্সে ফাঁকা জায়গা (Space) তৈরি করা।"
           )
         elif any(
             k in text_lower
@@ -2013,7 +2074,7 @@ elif nav_choice == "🤖 Football AI (Public)":
           resp = (
               "**Gegenpressing (Counter-pressing):** বল হারানোর সাথে সাথে ৩-৫"
               " সেকেন্ডের মধ্যে প্রতিপক্ষকে চেপে ধরে বল পুনরুদ্ধার করার কৌশল।"
-              " জার্মানি ও ইয়ুর্গেন ক্লপের দলের অন্যতম প্রধান হাতিয়ার।"
+              " জার্মানি ও ইয়ুর্গেন ক্লপের দলের অন্যতম প্রধান হাতিয়ার।"
           )
         elif any(
             k in text_lower
@@ -2025,9 +2086,9 @@ elif nav_choice == "🤖 Football AI (Public)":
             ]
         ):
           resp = (
-              "**Counter-Attacking Strategy:** প্রতিপক্ষের আক্রমণ ভেঙে যাওয়ার"
-              " সাথে সাথেই দ্রুত উইং দিয়ে দীর্ঘ ও দ্রুত পাসের মাধ্যমে আক্রমণ"
-              " চালানো। কম সময়ের মধ্যে গোল করার সবচেয়ে কার্যকর কৌশল।"
+              "**Counter-Attacking Strategy:** প্রতিপক্ষের আক্রমণ ভেঙে যাওয়ার"
+              " সাথে সাথেই দ্রুত উইং দিয়ে দীর্ঘ ও দ্রুত পাসের মাধ্যমে আক্রমণ"
+              " চালানো। কম সময়ের মধ্যে গোল করার সবচেয়ে কার্যকর কৌশল।"
           )
         elif any(
             k in text_lower
@@ -2035,11 +2096,11 @@ elif nav_choice == "🤖 Football AI (Public)":
         ):
           resp = (
               "**Low Block / Solid Defense:** নিজের পেনাল্টি বক্সের সামনে শক্ত"
-              " প্রতিরক্ষামূলক লাইন তৈরি করে প্রতিপক্ষকে শট নেওয়া থেকে বিরত রাখা।"
-              " এটি সাধারণত প্রতিপক্ষ দল শক্তিশালী হলে প্রয়োগ করা হয়।"
+              " প্রতিরক্ষামূলক লাইন তৈরি করে প্রতিপক্ষকে শট নেওয়া থেকে বিরত রাখা।"
+              " এটি সাধারণত প্রতিপক্ষ দল শক্তিশালী হলে প্রয়োগ করা হয়।"
           )
 
-        # ৩. প্লেয়ার রোল ও পজিশনিং
+        # ৩. প্লেয়ার রোল ও পজিশনিং
         elif any(
             k in text_lower
             for k in ["offside", "offside trap", "অফসাইড", "offside rule"]
@@ -2061,9 +2122,9 @@ elif nav_choice == "🤖 Football AI (Public)":
             ]
         ):
           resp = (
-              "**Inverted Winger Dynamics:** ডানপায়ের প্লেয়ার বাম উইঙে বা"
-              " বামপায়ের প্লেয়ার ডান উইঙে খেলে ইনসাইডে কাট-ইন (Cut-in) করে শট"
-              " নিতে সাহায্য করে। ওভারল্যাপিং ফুলব্যাকদের জন্য জায়গা তৈরি করতে এটি"
+              "**Inverted Winger Dynamics:** ডানপায়ের প্লেয়ার বাম উইঙে বা"
+              " বামপায়ের প্লেয়ার ডান উইঙে খেলে ইনসাইডে কাট-ইন (Cut-in) করে শট"
+              " নিতে সাহায্য করে। ওভারল্যাপিং ফুলব্যাকদের জন্য জায়গা তৈরি করতে এটি"
               " দারুণ।"
           )
         elif any(
@@ -2073,7 +2134,7 @@ elif nav_choice == "🤖 Football AI (Public)":
           resp = (
               "**False 9 Role:** সেন্ট্রাল স্ট্রাইকার বক্সের ভেতর না থেকে"
               " মিডফিল্ডে নেমে আসে। এর ফলে প্রতিপক্ষের সেন্টার-ব্যাকরা বিভ্রান্ত"
-              " হয় এবং উইঙ্গারদের জন্য বক্সে ঢোকার খালি জায়গা তৈরি হয়।"
+              " হয় এবং উইঙ্গারদের জন্য বক্সে ঢোকার খালি জায়গা তৈরি হয়।"
           )
 
         # ৪. সাধারণ ফুটবল ট্যাকটিক্স (ডিফল্ট স্ট্র্যাটেজিক উত্তর)
@@ -2083,7 +2144,7 @@ elif nav_choice == "🤖 Football AI (Public)":
               "১. **Formational Line:** ফর্মেশন কমপ্যাক্ট রাখুন যেন সেন্ট্রাল স্পেস"
               " বন্ধ থাকে।\n"
               "২. **Pressing Zone:** মিড-ব্লকে প্রেস তৈরি করে বল পুনরুদ্ধার করুন।\n"
-              "৩. **Transition:** দ্রুত উইং প্লেয়ারদের ব্যবহার করে কাউন্টার"
+              "৩. **Transition:** দ্রুত উইং প্লেয়ারদের ব্যবহার করে কাউন্টার"
               " অ্যাটাকে যান।"
           )
 
@@ -2163,7 +2224,7 @@ elif nav_choice == "👤 Personal AI (Private)":
       else:
         # --- LOCAL GENERAL INTEL ASSISTANT ---
 
-        # ১. সাধারণ অভিবাদন ও কুশল বিনিময়
+        # ১. সাধারণ অভিবাদন ও কুশল বিনিময়
         if any(
             k in text_lower
             for k in [
@@ -2180,10 +2241,10 @@ elif nav_choice == "👤 Personal AI (Private)":
           resp = (
               f"হ্যালো {user_fullname}! আমি আপনার পার্সোনাল অ্যাসিস্ট্যান্ট"
               f" **{pai_name}**। আমি আপনাকে যেকোনো সাধারণ প্রশ্ন, প্ল্যানিং বা"
-              " পড়াশোনায় সাহায্য করতে পারি। বলুন, আজ কীভাবে সাহায্য করতে পারি?"
+              " পড়াশোনায় সাহায্য করতে পারি। বলুন, আজ কীভাবে সাহায্য করতে পারি?"
           )
 
-        # ২. পরিচয় বা নাম সম্পর্কিত প্রশ্ন
+        # ২. পরিচয় বা নাম সম্পর্কিত প্রশ্ন
         elif any(
             k in text_lower
             for k in [
@@ -2197,10 +2258,10 @@ elif nav_choice == "👤 Personal AI (Private)":
           resp = (
               f"আমি **{pai_name}**, আপনার নিজস্ব স্মার্ট পার্সোনাল AI"
               " অ্যাসিস্ট্যান্ট। আপনার দৈনন্দিন কাজ, পরামর্শ এবং যেকোনো সাধারণ"
-              " প্রশ্নের উত্তর দেওয়ার জন্য আমি প্রস্তুত।"
+              " প্রশ্নের উত্তর দেওয়ার জন্য আমি প্রস্তুত।"
           )
 
-        # ৩. সময়, রুটিন বা প্ল্যানিং
+        # ৩. সময়, রুটিন বা প্ল্যানিং
         elif any(
             k in text_lower
             for k in [
@@ -2214,11 +2275,11 @@ elif nav_choice == "👤 Personal AI (Private)":
             ]
         ):
           resp = (
-              f"প্রিয় {user_fullname}, একটি ভালো রুটিনের জন্য প্রতিদিনের কাজকে"
+              f"প্রিয় {user_fullname}, একটি ভালো রুটিনের জন্য প্রতিদিনের কাজকে"
               " ৩টি ধাপে ভাগ করুন:\n"
-              "১. **Most Important Tasks (MITs):** সকালে সবচেয়ে জরুরি ২টি কাজ শেষ"
+              "১. **Most Important Tasks (MITs):** সকালে সবচেয়ে জরুরি ২টি কাজ শেষ"
               " করুন।\n"
-              "২. **Pomodoro Focus:** ২৫ মিনিট মনোযোগ দিয়ে কাজ করে ৫ মিনিট বিরতি"
+              "২. **Pomodoro Focus:** ২৫ মিনিট মনোযোগ দিয়ে কাজ করে ৫ মিনিট বিরতি"
               " নিন।\n"
               "৩. **Review:** দিন শেষে ১০ মিনিট পুরো দিনের কাজের হিসাব করুন।"
           )
@@ -2241,7 +2302,7 @@ elif nav_choice == "👤 Personal AI (Private)":
               "**স্বাস্থ্যকর লাইফস্টাইল টিপস:**\n"
               "• **হাইড্রেটেড থাকুন:** প্রতিদিন অন্তত ২.৫ থেকে ৩ লিটার পানি পান"
               " করুন।\n"
-              "• **নিয়মিত শরীরচর্চা:** প্রতিদিন অন্তত ২০-৩০ মিনিট হাঁটা বা হালকা"
+              "• **নিয়মিত শরীরচর্চা:** প্রতিদিন অন্তত ২০-৩০ মিনিট হাঁটা বা হালকা"
               " ফ্রি-হ্যান্ড এক্সারসাইজ করুন।\n"
               "• **পরিমিত ঘুম:** রাতে ৭-৮ ঘণ্টা সুনিদ্রা নিশ্চিত করুন।"
           )
@@ -2255,26 +2316,25 @@ elif nav_choice == "👤 Personal AI (Private)":
                 "programming",
                 "python",
                 "পড়াশোনা",
-                "পড়াশোনা",
                 "কৌশল",
             ]
         ):
           resp = (
               "**কার্যকর শেখার কৌশল (Feynman Technique):**\n"
-              "১. যেকোনো বিষয় সহজ ভাষায় অন্য কাউকে বোঝানোর চেষ্টা করুন।\n"
+              "১. যেকোনো বিষয় সহজ ভাষায় অন্য কাউকে বোঝানোর চেষ্টা করুন।\n"
               "২. যেখানে আটকে যাবেন, সেখানে মূল সোর্স বা বই দেখে কনসেপ্ট ক্লিয়ার"
               " করুন।\n"
               "৩. শেখার সাথে সাথে ছোট ছোট প্র্যাকটিক্যাল প্রজেক্ট তৈরি করুন।"
           )
 
-        # ৬. মোটিভেশন ও মানসিক মানসিক উদ্দীপনা
+        # ৬. মোটিভেশন ও মানসিক উদ্দীপনা
         elif any(
             k in text_lower
             for k in [
                 "motivation",
                 "depressed",
                 "sad",
-                "সহায়তা",
+                "সহায়তা",
                 "হতাশ",
                 "ধৈর্য",
                 "ইনস্পায়ার",
@@ -2282,7 +2342,7 @@ elif nav_choice == "👤 Personal AI (Private)":
         ):
           resp = (
               f"মনে রাখবেন {user_fullname}, সফলতা একদিনে আসে না। ছোট ছোট ধারাবাহিক"
-              " চেষ্টাই একদিন বড় পরিবর্তন আনে। আজকের দিনটিকে নিজের সেরাটা দিয়ে"
+              " চেষ্টাই একদিন বড় পরিবর্তন আনে। আজকের দিনটিকে নিজের সেরাটা দিয়ে"
               " কাজে লাগান!"
           )
 
@@ -2290,9 +2350,9 @@ elif nav_choice == "👤 Personal AI (Private)":
         else:
           resp = (
               f"হ্যালো {user_fullname}! আপনার প্রশ্ন: **'{text}'**।\n\n"
-              f"আমি **{pai_name}**—আপনার এই প্রশ্নের বিষয়ে পরামর্শ হলো: যেকোনো"
+              f"আমি **{pai_name}**—আপনার এই প্রশ্নের বিষয়ে পরামর্শ হলো: যেকোনো"
               " কাজের সফলতা নির্ভর করে সঠিক পরিকল্পনা এবং ধারাবাহিক চেষ্টার ওপর।"
-              " এ বিষয়ে আরও নির্দিষ্ট কোনো তথ্য জানতে চাইলে আমাকে নির্দ্বিধায়"
+              " এ বিষয়ে আরও নির্দিষ্ট কোনো তথ্য জানতে চাইলে আমাকে নির্দ্বিধায়"
               " বলুন!"
           )
 
@@ -2311,7 +2371,7 @@ elif nav_choice == "👤 Personal AI (Private)":
 
   st.divider()
 
-# -------------------------------------------------------------
+  # -------------------------------------------------------------
   # 🗳️ SUNDAY MOTM POLL
   # -------------------------------------------------------------
   st.subheader("🗳️ Sunday MOTM Poll")
@@ -2322,7 +2382,7 @@ elif nav_choice == "👤 Personal AI (Private)":
   else:
     active_users = st.session_state.get("users", {})
 
-  # 🔍 বর্তমান ইউজারনেম নিশ্চিত করার নিরাপদ উপায়
+  # 🔍 বর্তমান ইউজারনেম নিশ্চিত করার নিরাপদ উপায়
   active_curr_user = ""
   if "curr_user" in locals() and isinstance(curr_user, dict):
     active_curr_user = curr_user.get("username", "")
@@ -2331,10 +2391,10 @@ elif nav_choice == "👤 Personal AI (Private)":
         "authenticated_user", st.session_state.get("curr_username", "")
     )
 
-  # স্ট্রিপ ও লোয়ারকেস করে নিশ্চিত নাম বের করা
+  # স্ট্রিপ ও লোয়ারকেস করে নিশ্চিত নাম বের করা
   clean_curr_user = str(active_curr_user).strip().lower()
 
-  # 🚫 নিজের নাম সম্পূর্ণ বাদ দিয়ে প্রার্থী তালিকা তৈরি
+  # 🚫 নিজের নাম সম্পূর্ণ বাদ দিয়ে প্রার্থী তালিকা তৈরি
   motm_candidates = [
       u
       for u in active_users.keys()
@@ -2343,8 +2403,8 @@ elif nav_choice == "👤 Personal AI (Private)":
 
   if not motm_candidates:
     st.warning(
-        "⚠️ আপনার নিজের আইডি ছাড়া ভোট দেওয়ার মতো অন্য কোনো সক্রিয় সদস্য পাওয়া"
-        " যায়নি।"
+        "⚠️ আপনার নিজের আইডি ছাড়া ভোট দেওয়ার মতো অন্য কোনো সক্রিয় সদস্য পাওয়া"
+        " যায়নি।"
     )
   else:
     vote = st.selectbox(
@@ -2369,7 +2429,7 @@ elif nav_choice == "👤 Personal AI (Private)":
         if "motm_votes" not in st.session_state:
           st.session_state.motm_votes = {}
 
-        # সেশন স্টেটে ভোট সেভ (মূল ইউজারনেম দিয়ে)
+        # সেশন স্টেটে ভোট সেভ (মূল ইউজারনেম দিয়ে)
         st.session_state.motm_votes[
             st.session_state.get("authenticated_user", active_curr_user)
         ] = vote
@@ -2379,7 +2439,7 @@ elif nav_choice == "👤 Personal AI (Private)":
 
         st.success(f"✅ Vote cast successfully for @{vote}!")
         st.rerun()
-        
+
 # ==========================================
 # 15. ADMIN CONTROL PANEL (FIXED & ULTRA-SAFE)
 # ==========================================
@@ -2470,10 +2530,12 @@ elif nav_choice == "⚙️ Admin Control Panel":
       pos_options = [
           "GK",
           "CB",
+          "LWB",
           "LB",
+          "RWB",
           "RB",
-          "RCM",
-          "LCM",
+          "RM",
+          "LM",
           "CAM",
           "RW",
           "LW",
